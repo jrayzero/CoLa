@@ -1,0 +1,1109 @@
+from error import *
+from slice import *
+from tuple_opts import *
+import random,string
+
+def valid_N[N:int]():
+  # TODO get rid of N>3 condition when have tuple fix
+  if N < 1 or N > 3:
+    raise ColaError()  
+
+# N = num. dimensions
+# T = Tuple of N ints
+class CoordGrid[T]:
+  """
+  Represents the backing area that Blocks and Views are defined relative to.
+  Blocks and Views with the same CoordGrid are part of the same spatial hierarchy.
+  """
+  unique_id: str
+
+  def __init__(self):
+    self.unique_id = ''.join(random.choices(string.printable, k=5))
+
+  def __eq__(self, other: CoordGrid[T]) -> bool:
+    return self.unique_id == other.unique_id
+  
+  def __ne__(self, other: CoordGrid[T]) -> bool:
+    return not (self == other)
+
+# E = element type
+# T = Tuple of N ints
+# C = Tuple of N ColaSlices
+@dataclass(init=False)
+class Multidim[E,T,C]:
+  """
+  Represents a multidimensional array that tracks its location within its CoordGrid
+  """
+  ## The dimensions
+  _dims: T
+  ## The total number of units (shorthand for multiplying all the dimensions)
+  _nunits: int
+  ## The underlying buffer this Multidim references
+  _buffer: Array[E]
+  ## The owning Multidim of the buffer
+  _buffer_owner: Multidim[E,T,C]
+  ## The backing CoordGrid
+  _cgrid: CoordGrid[T]
+  ## This mapping to _cgrid
+  _cgrid_mapping: C
+  ## Whether this Multidim owns _buffer
+  _is_owner: bool
+  ## Whether this Multidim was the creator of the CoordGrid
+  ## _is_root == True implies _is_owner == True
+  _is_root: bool
+  ## Relatives that the user wants to keep quick access to
+  _stored_relatives: dict[str, Multidim[E,T,C]]
+
+  def __init__(self, *dims):
+    """
+    Create a root Multidim from a set of dimensions
+    """
+    assert staticlen(dims) == staticlen(self._dims)
+    self._dims = tuple(d for d in dims)
+    self._cgrid_mapping = tuple(ColaSlice(0,d,1) for d in dims)
+    self._nunits = mul_reduce(self._dims)
+    self._buffer_owner = self
+    self._buffer = Array[E](self.nunits())
+    self._cgrid = CoordGrid[T]()
+    self._is_owner = True
+    self._is_root = True
+    self._stored_relatives = {}
+
+  def __init__(self, dims: T):
+    """
+    Create a root Multidim from a set of dimensions
+    """    
+    self._dims = dims
+    self._cgrid_mapping = tuple(ColaSlice(0,d,1) for d in dims)
+    self._nunits = mul_reduce(self._dims)
+    self._buffer_owner = self
+    self._buffer = Array[E](self.nunits())
+    self._cgrid = CoordGrid[T]()
+    self._is_owner = True
+    self._is_root = True
+    self._stored_relatives = {}
+
+  def __init__(self, other: Multidim[E,T,C], is_owner: bool):
+    """
+    Create a Multidim using the parameters of other. If is_owner==True,
+    create a new buffer for self.
+    """
+    self._nunits = other._nunits
+    self._dims = other._dims
+    self._cgrid_mapping = other._cgrid_mapping
+    if is_owner:
+      self._buffer_owner = self
+      self._buffer = Array[E](self.nunits())      
+    else:
+      self._buffer_owner = other._buffer_owner
+      self._buffer = other._buffer
+    self._cgrid = other._cgrid
+    self._is_owner = is_owner
+    self._is_root = False
+    self._stored_relatives = {}
+
+  def __init__(self, other: Multidim[E,T,C], cgrid_mapping: C):
+    """
+    Create a Multidim using the parameters of other, except substitute in
+    the specified cgrid_mapping.
+    """
+    self._cgrid_mapping = cgrid_mapping
+    self._cgrid = other._cgrid
+    self._buffer_owner = other._buffer_owner
+    self._buffer = other._buffer
+    self._dims = tuple(c.effective_sz for c in cgrid_mapping) 
+    self._nunits = mul_reduce(self._dims)
+    self._is_owner = False
+    self._is_root = False
+    self._stored_relatives = {}
+
+  def set_density(self, *mul) -> Multidim[E,T,C]:
+    """
+    Creates a new Multidim with mul[i] bigger size in dimension i.
+    TODO currently, the Multidim created has no relation to self.
+    """
+    assert staticlen(mul) == staticlen(self._dims)
+    dims = mul_tuples(self._dims, tuple(m for m in mul))
+    return Multidim[E,T,C](dims)
+
+  def dims(self) -> T:
+    """
+    Return the dimensions of self
+    """
+    return self._dims
+
+  def nunits(self) -> int:
+    """
+    Return the nunits of self
+    """
+    return self._nunits
+
+  def origin(self) -> T:
+    """
+    Return the origin of self within its CoordGrid
+    """
+    return tuple(c.start for c in self._cgrid_mapping)
+  
+  # doesn't do a containment check. just compares relative locations
+  def origin_relative_to(self, other: Multidim[E,T,C]) -> T:
+    """
+    Return the origin of self relative to other wrt their CoordGrids 
+    (which should be the same)
+    """
+    assert self._cgrid == other._cgrid
+    return subtract_tuples(self.origin(), other.origin())
+
+  def _compute_area_tuple[T](origin_tup: T, dim_tup: T):
+    """
+    Compute the area covered by dim_tup starting at origin_tup.
+    """
+    if staticlen(origin_tup) == 0:
+      return ()
+    else:
+      return (ColaSlice(origin_tup[0], origin_tup[0] + dim_tup[0], 1),) + Multidim._compute_area_tuple(origin_tup[1:], dim_tup[1:])
+
+  def colocate(self, surrounding_region: Multidim[E,T,C], other: Multidim[E,T,C]) -> Multidim[E,T,C]:
+    """
+    Return the region of self within other, where self and other may have different CoordGrids.
+    First, self is located within surrounding_region (which should have the same cgrid as self, 
+    and the same dims as other). Then, self's location in surrounding_region is used as its
+    location within other. Any underlying stride of self and/or surrounding region is ignored
+    when other is accessed, using only the origin and dimension information.
+    """
+    assert equal_tuples(surrounding_region.dims(), other.dims())
+    origin = self.origin_relative_to(surrounding_region)
+    # compute the full size of self to get out of other
+    area = Multidim._compute_area_tuple(origin, self._dims)
+    colocated = other[area]
+    return colocated
+
+  def _do_fully_contained[C](self_mapping: C, other_mapping: C) -> bool:
+    if staticlen(self_mapping) == 0:
+      return True
+    else:
+      starts_oob = self_mapping[0].start < other_mapping[0].start
+      stops_oob = self_mapping[0].stop > other_mapping[0].stop
+      return not (starts_oob or stops_oob) and Multidim._do_fully_contained(self_mapping[1:], other_mapping[1:])
+
+  def fully_contained(self, other: Multidim[E,T,C]) -> bool:
+    """
+    Check if self is fully contained within the region specified by other
+    wrt their CoordGrids (which should be the same). self is fully contained
+    if
+    1: self's start >= other's start 
+    2: self's stop <= other's stop
+    """
+    assert self._cgrid == other._cgrid
+    return Multidim._do_fully_contained[C](self._cgrid_mapping, other._cgrid_mapping)
+
+  def _do_fully_contained[C](self_mapping: C, other: CoordGrid[T]) -> bool:
+    if staticlen(self_mapping) == 0:
+      return True
+    else:
+      starts_oob = self_mapping[0].start < 0
+      stops_oob = self_mapping[0].stop > other._dims[0]
+      return not (starts_oob or stops_oob) and Multidim._do_fully_contained(self_mapping[1:], other[1:])
+
+
+  def fully_contained(self, other: CoordGrid[T]) -> bool:
+    """
+    Check if self is fully contained within the specified cgrid.
+    wrt their CoordGrids (which should be the same). self is fully contained
+    if
+    1: self's start >= other's start 
+    2: self's stop <= other's stop
+    """
+    assert self._cgrid == other
+    return Multidim._do_fully_contained[C](self._cgrid_mapping, other)
+  
+  def _do_linearize(coord, dims) -> int:
+    if staticlen(coord) == 0:
+      return 0
+    else:
+      mul = coord[0] * mul_reduce(dims[1:])
+      return mul + Multidim._do_linearize(coord[1:], dims[1:])
+
+  def _do_delinearize(lidx: int, dims):
+    if staticlen(dims) == 0:
+      return (lidx,)
+    else:
+      mul = mul_reduce(dims)
+      c = lidx // mul
+      return (c,) + Multidim._do_delinearize(lidx % mul, dims[1:])
+
+  def _linearize(self, coord: T) -> int:
+    """
+    Return the linearization of coord relative to self.
+    """
+    return Multidim._do_linearize(coord, self._dims)
+
+  def _delinearize(self, lidx: int) -> T:
+    """
+    Return the delinearization of the linear index lidx relative to self.
+    """
+    if staticlen(self._dims) == 1:
+      return (lidx,)
+    else:
+      return Multidim._do_delinearize(lidx, self._dims[1:])
+
+  # TODO: bool generics
+  def remap_local_lidx_to_buffer_lidx[B:int](self, local_lidx: int):
+    """
+    If B == 1, return the linear index into self._buffer corresponding to local_lidx, which
+    is a linear index into self. If B == 0, return the coord into self._buffer. Perform an out-of-bounds check.
+    """
+    coord = self._delinearize(local_lidx)
+    return self.remap_local_coord_to_buffer_lidx[B](coord)
+
+  def _doremap_local_coord(local_coord, buffer_origin, cgrid_mapping, buff_owner_cgrid_mapping):
+    if staticlen(local_coord) == 0:
+      return ()
+    else:
+      c = local_coord[0]
+      c = (c * cgrid_mapping[0].stride + cgrid_mapping[0].start - buffer_origin[0]) // (buff_owner_cgrid_mapping[0].stride)
+      return (c,) + Multidim._doremap_local_coord(local_coord[1:], buffer_origin[1:], cgrid_mapping[1:], buff_owner_cgrid_mapping[1:])
+
+  def remap_local_coord_to_buffer_lidx[B:int](self, local_coord):
+    """
+    If B == 1, return the linear index into self._buffer corresponding to local_coord, which
+    is relative to self. If B == 0, return the coord into self._buffer. Perform an out-of-bounds check.
+    """
+    # 1. multiply by this' strides in each dimension to figure out the pseudo-location in cgrid
+    # 2. add on this' origin to get the true location in cgrid
+    # 3. subtract buffer origin from the coord
+    # 4. divide by the buffer strides    
+    # 5. get relative to self
+    coord = Multidim._doremap_local_coord(local_coord, self._buffer_owner.origin(), self._cgrid_mapping, self._buffer_owner._cgrid_mapping)
+    if B == 1:
+      # 6. linearize coord wrt buffer
+      mapped_lidx = self._buffer_owner._linearize(coord)
+      assert mapped_lidx < self._buffer_owner.nunits() # check in-bounds
+      return mapped_lidx
+    else:
+      return coord
+
+  def __call__(self) -> E:
+    """
+    Realize the unit within this Multidim (nunits must be 1)
+    """
+    assert self.nunits() == 1
+    assert self.fully_contained(self._buffer_owner)
+    return self._buffer[self.remap_local_lidx_to_buffer_lidx[1](0)]  
+
+  def __call__(self, idx: int, *idxs) -> E:
+    """
+    Realize the unit within this Multidim at the location specified by the idxs. 
+    Indexing is allowed to use either 1 or N indices. If there is 1 index, it 
+    corresponds to a linear index within self. All indices are relative to self.
+    """
+    for idx in idxs:
+      # TODO does this statically assert ?
+      assert isinstance(idx, int)
+    if staticlen(idxs) == 0:
+      x = self[(idx,)]
+      return x()
+    else:
+      x = self[(idx,) + tuple(i for i in idxs)]
+      assert x.fully_contained(self._buffer_owner) # check in-bounds
+      return x()
+
+  def clamp(self) -> E:
+    """
+    Like __call__, but the accessed unit location is clamped to the edges of the underlying buffer if the
+    location is out-of-bounds wrt the buffer.
+    """
+    assert self.nunits() == 1
+    return self.clamp(0)
+
+  def clamp(self, idx: int, *idxs) -> E:
+    """
+    Like __call__, but the accessed unit location is clamped to the edges of the underlying buffer if the
+    location is out-of-bounds wrt the buffer.
+    """
+    for idx in idxs:
+      assert isinstance(idx, int)
+    # first get the normal access
+    acc = self[(idx,) + tuple(i for i in idxs)] if staticlen(idxs) > 0 else self[idx]
+    # now clamp it and use __call__
+    clamped = acc._clamp_to(self._buffer_owner)
+    return Multidim(acc, clamped)()
+
+  def clamp(self, other: Multidim[E,T,C]) -> Multidim[E,T,C]:
+    """
+    Clamp the boundaries of self relative to other and return the clamped region.
+    """
+    assert self._cgrid == other._cgrid
+    return Multidim(self, self._clamp_to(other))
+
+  def _do_clamp_to[C](acc_map: C, buff_map: C) -> C:
+    if staticlen(acc_map) == 0:
+      return ()
+    else:
+      am = acc_map[0]
+      bm = buff_map[0]
+      new_start = 0
+      new_stop = 0
+      if am.start < bm.start:
+        new_start = bm.start
+      elif am.start >= bm.stop:
+        new_start = max(0, bm.stop - bm.stride)
+      else:
+        new_start = am.start
+      if am.stop <= bm.start:
+        new_stop = min(bm.stop, bm.start + bm.stride)
+      elif am.stop > bm.stop:
+        new_stop = bm.stop
+      else:
+        new_stop = am.stop
+      return (ColaSlice(new_start, new_stop, am.stride),) + Multidim._do_clamp_to(acc_map[1:], buff_map[1:])
+
+  def _clamp_to(self, clamp_to: Multidim[E,T,C]) -> C:
+    """
+    Clamp the edges of self to clamp_to, returning the clamped region.
+    """
+    acc_map = self._cgrid_mapping
+    buff_map = clamp_to._cgrid_mapping
+    return Multidim._do_clamp_to[C](acc_map, buff_map)
+
+  def _get_mapping(self_cgrid_mapping, other_cgrid_mapping, other_origin, relative_origin):
+    if staticlen(other_origin) == 0:
+      return ()
+    else:
+      # if fails: other\'s origin does not fall on self\'s stride line
+      assert other_origin[0] % (self_cgrid_mapping[0].start+self_cgrid_mapping[0].stride) == 0
+      # if fails: other\'s stride is not a multiple of self\'s stride
+      assert other_cgrid_mapping[0].stride % self_cgrid_mapping[0].stride == 0
+      # get the stop of other RELATIVE to self
+      stop = other_cgrid_mapping[0].stop - self_cgrid_mapping[0].start-1
+      # creating the mapping RELATIVE to self 
+      return (ColaSlice(relative_origin[0]//self_cgrid_mapping[0].stride, \
+                        stop//self_cgrid_mapping[0].stride+1, \
+                        other_cgrid_mapping[0].stride // self_cgrid_mapping[0].stride),) + \
+                        Multidim._get_mapping(self_cgrid_mapping[1:], other_cgrid_mapping[1:], other_origin[1:], relative_origin[1:])       
+
+  def __getitem__(self, other: Multidim[E,T,C]) -> Multidim[E,T,C]:    
+    """
+    Returns the region in self corresponding to other. Both self and other must share the same cgrid.
+    Other's stride must be a multiple of self's stride, and its origin must fall on a stride line of 
+    self. However, other doesn't actually need to be *within* self according to these requirements,
+    so you can get things out-of-bounds. Use clamp(self0 if you want to actually constrain this (i.e.
+    self[other].clamp(self)
+    """
+    assert self._cgrid == other._cgrid
+    other_origin = other.origin()
+    # this becomes the start of the accessed region
+    relative = other.origin_relative_to(self)
+    return self[Multidim._get_mapping(self._cgrid_mapping, other._cgrid_mapping, other_origin, relative)]
+
+  def __getitem__(self, lidx: int) -> Multidim[E,T,C]:
+    """
+    Returns the region corresponding to the linear index lidx
+    """
+    return self.__getitem__((lidx,))  
+
+  def __getitem__(self, lidx: Slice) -> Multidim[E,T,C]:
+    """
+    Returns the region corresponding to the linear index lidx
+    """
+    return self.__getitem__((lidx,))  
+
+  def __getitem__(self, lidx: ColaSlice) -> Multidim[E,T,C]:
+    """
+    Returns the region corresponding to the linear index lidx
+    """
+    return self.__getitem__((lidx,))  
+
+  def __getitem__(self, relative: str) -> Multidim[E,T,C]:
+    """
+    Get the specified relative.
+    """
+    return self._stored_relatives[relative]
+
+  def _canonicalize_idx(idx: int, dim: int) -> Tuple[ColaSlice]:
+    return (ColaSlice(idx, idx+1, 1),)
+  
+  def _canonicalize_idx(idx: Slice, dim: int) -> Tuple[ColaSlice]:
+    return (idx.cola_adjust(dim),)
+
+  def _canonicalize_idx(idx: ColaSlice, dim: int) -> Tuple[ColaSlice]:
+    return (idx,)
+
+  def _do_canonicalize(idxs, dims):
+    if staticlen(idxs) == 0:
+      return ()
+    else:
+      if isinstance(idxs[0], Slice):
+        return (idxs[0].cola_adjust(dims[0]),) + Multidim._do_canonicalize(idxs[1:],dims[1:])
+      elif isinstance(idxs[0], ColaSlice):
+        return (idxs[0],) + Multidim._do_canonicalize(idxs[1:],dims[1:])
+      else:
+        return (ColaSlice(idxs[0],idxs[0]+1,1),) + Multidim._do_canonicalize(idxs[1:],dims[1:])
+
+  def _do_combined(self_cgrid_mapping, canon):
+    if staticlen(self_cgrid_mapping) == 0:
+      return ()
+    else:
+      this = self_cgrid_mapping[0]
+      that = canon[0]
+      combo_start = this.start + that.start * this.stride
+      combo_stop = this.start + that.stop * this.stride
+      combo_stride = this.stride * that.stride
+      return (ColaSlice(combo_start, combo_stop, combo_stride),) + Multidim._do_combined(self_cgrid_mapping[1:], canon[1:])
+
+  def __getitem__(self, idxs) -> Multidim[E,T,C]:
+    """
+    Return the region covered by the indexes idxs. Idxs can be combinations of integers, Slices, or
+    ColaSlices. Indexing is allowed to use either 1 or N indices. If there is 1 index, it 
+    corresponds to a linear index within self. All indices are relative to self. 
+    """
+    if staticlen(idxs) == 1:
+      if staticlen(self._dims) != 1:
+        # this is a linear idx
+        assert idxs[0] >= 0
+        idxs2 = self._delinearize(idxs[0])
+        canon = Multidim._do_canonicalize(idxs2, self._dims)
+        return Multidim(self, Multidim._do_combined(self._cgrid_mapping, canon))
+      else:
+        canon = Multidim._do_canonicalize(idxs, self._dims)
+        return Multidim(self, Multidim._do_combined(self._cgrid_mapping, canon))
+    else:
+      canon = Multidim._do_canonicalize(idxs, self._dims)
+      return Multidim(self, Multidim._do_combined(self._cgrid_mapping, canon))  
+
+  def __setitem__(self, idx: Multidim[E,T,C], item: E):
+    """
+    Broadcast item to the region in self covered by idx.
+    """
+    sliced = self[idx]
+    # Directly accesses the buffer otherwise you'll infinitely recurse
+    for s in range(sliced.nunits()):
+      sliced._buffer[sliced.remap_local_lidx_to_buffer_lidx[1](s)] = item
+
+  def __setitem__(self, idxs, item: E):
+    """
+    Broadcast item to the region in self covered by idx.
+    """
+    # Directly accesses the buffer otherwise you'll infinitely recurse
+    sliced = self[idxs]
+    for s in range(sliced.nunits()):
+      sliced._buffer[sliced.remap_local_lidx_to_buffer_lidx[1](s)] = item
+
+  def __setitem__[T2,C2](self, idxs, item: Multidim[E,T2,C2]):
+    """
+    Writes units from item to the region covered by idxs. The region 
+    covered by idxs and item must have the same nunits.
+    """
+    # Directly accesses the buffer otherwise you'll infinitely recurse
+    sliced = self[idxs]
+    assert sliced.nunits() == item.nunits()
+    for i in range(sliced.nunits()):
+      item_elem = item(i)
+      sliced._buffer[sliced.remap_local_lidx_to_buffer_lidx[1](i)] = item_elem
+
+  def __setitem__(self, relative_name: str, relative: Multidim[E,T,C]):
+    self._stored_relatives[relative_name] = relative
+  
+  def __iter__(self) -> Generator[Multidim[E,T,C]]:
+    """
+    Iterate over the individual units of self, returning a new Multidim representing
+    each units location.
+    """
+    for i in range(self.nunits()):
+      yield self.__getitem__((i,))
+
+# Can do general str for N > 2 when Codon supports recursion with static integers 
+#  def _get_max_str_len[I:int](self, lidx: int = 0) -> int:
+#    m = 0
+#    N = staticlen(self._dims)
+#    if I == N-1:
+#      for _ in range(self.dims()[I]):
+#        s = str(self(lidx))
+#        if len(s) > m:
+#          m = len(s)
+#        lidx += 1  
+#    elif I == N-2:
+#      for _ in range(self.dims()[I]):
+#        for _ in range(self.dims()[I+1]):          
+#          s = str(self(lidx))
+#          if len(s) > m:
+#            m = len(s)
+#          lidx += 1
+#    else:
+#      m2 = self._get_max_str_len[I+1](lidx)
+#      if m2 > m:
+#        m = m2
+#    return m
+#
+#  def _to_str[I:int](self, max_len: int, lidx: int = 0) -> str:
+#    s = ''
+#    N = staticlen(self._dims)
+#    if I == N-1:
+#      for _ in range(self.dims()[I]):
+#        m = str(self(lidx))
+#        s += ' ' * (max_len - len(m) + 1) + m + ' '
+#        lidx += 1  
+#      s += '\n'
+#    elif I == N-2:
+#      for _ in range(self.dims()[I]):
+#        for _ in range(self.dims()[I+1]):          
+#          m = str(self(lidx))
+#          s += ' ' * (max_len - len(m) + 1) + m + ' '
+#          lidx += 1
+#        s += '\n'
+#      s += '\n'
+#    else:
+#      s += self._to_str[I+1](max_len, lidx)
+#    return s    
+#
+#  def __str__(self) -> str:
+#    s = '========\n'
+#    s += self._to_str[0](self._get_max_str_len[0]())
+#    s += '\n' + str(self._cgrid_mapping)
+#    return s
+
+  def _get_max_str_len(self, lidx: int = 0) -> int:
+    m = 0
+    if staticlen(self._dims) == 1:
+      for _ in range(self._dims[0]):
+        s = str(self(lidx))
+        if len(s) > m:
+          m = len(s)
+        lidx += 1  
+    else:
+      for _ in range(self._dims[0]):
+        for _ in range(self._dims[1]):
+          s = str(self(lidx))
+          if len(s) > m:
+            m = len(s)
+          lidx += 1
+    return m
+
+  def _to_str(self, max_len: int, lidx: int = 0) -> str:
+    s = ''
+    if staticlen(self._dims) == 1:
+      for _ in range(self._dims[0]):
+        m = str(self(lidx))
+        s += ' ' * (max_len - len(m) + 1) + m + ' '
+        lidx += 1  
+      s += '\n'
+    elif staticlen(self._dims) == 2:
+      for _ in range(self._dims[0]):
+        for _ in range(self._dims[1]):
+          m = str(self(lidx))
+          s += ' ' * (max_len - len(m) + 1) + m + ' '
+          lidx += 1
+        s += '\n'
+      s += '\n'
+    return s    
+
+  def __str__(self) -> str:
+    if staticlen(self._dims) > 2:
+      return '' # not currently supported
+    s = '========\n'
+    s += self._to_str(self._get_max_str_len())
+    s += '\n' + str(self._cgrid_mapping)
+    return s
+
+
+  def __eq__(self, val: E) -> bool:
+    if self.nunits() != 1 or self() != val:
+      return False
+    return True
+
+  def __eq__(self, val: list[E]) -> bool:
+    if self.nunits() != len(val):
+      return False
+    for i0,i1 in zip(self, val):
+      if i0() != i1:
+        return False
+    return True
+
+  def __eq__(self, val: Multidim[E,T,C]) -> bool:
+    if self.nunits() != val.nunits():
+      return False
+    for i0,i1 in zip(self, val):
+      if i0() != i1():
+        return False
+    return True
+
+  # TODO operator === for this
+  def loc_eq(self, other: Multidim[E,T,C]) -> bool:
+    """
+    Check if the location of self and other is the same (ignoring if their 
+    cgrids are the same or not)
+    """
+    return self._cgrid_mapping == other._cgrid_mapping
+
+  def default_fill(self,add):
+    for i in range(self.nunits()):
+      self[i] = i+add
+
+  def remap(self, other: Multidim[E,T,C]):
+    """
+    Remap self to point to other's cgrid. Modifies self. Only works for block's without relatives
+    """
+    assert self._is_owner # doesn't make sense to remap a view
+    assert len(self._stored_relatives) == 0
+    assert self.fully_contained(other)
+    self._cgrid = other._cgrid
+
+  def read(self, fd, bytes_per_elem: int, nelems: int):
+    """
+    Read data from self.fp into the raw underlying buffer belonging to buff.
+    This starts in buff.base.buffer at the mapping specified by buff, but
+    then just writes contiguously, so beware if you have stride or sub-regions.
+    """
+    _C.fread(self._buffer.ptr + self.remap_local_lidx_to_buffer_lidx[1](0), bytes_per_elem, nelems, fd.fp)
+
+  def write(self, fd, bytes_per_elem: int, nelems: int):
+    """
+    Write data from buff into self.fp. 
+    This starts in buff.base.buffer at the mapping specified by buff, but
+    then just reads contiguously, so beware if you have stride or sub-regions.
+    """
+    _C.fwrite(self._buffer.ptr + self.remap_local_lidx_to_buffer_lidx[1](0), bytes_per_elem, nelems, fd.fp)
+
+@dataclass(init=False)
+class Block[E,T,C]:
+  base: Multidim[E,T,C]
+
+@dataclass(init=False)
+class View[E,T,C]:
+  base: Multidim[E,T,C]
+
+# these make placeholders for figuring out the tuple type
+def make_int_tuple(tup):
+  if staticlen(tup) == 0:
+    return ()
+  else:
+    return (0,) + make_int_tuple(tup[1:])
+
+def make_cola_slice_tuple(tup):
+  if staticlen(tup) == 0:
+    return ()
+  else:
+    return (ColaSlice(0,1,1),) + make_cola_slice_tuple(tup[1:])
+
+@extend
+class Block[E,T,C]:
+
+  def make[E](*dims):
+    d = tuple(d for d in dims)
+    T = typeof(make_int_tuple(d))
+    C = typeof(make_cola_slice_tuple(d))
+    return Block[E,T,C](*dims)
+
+  def __init__(self, *dims):
+    self.base = Multidim[E,T,C](*dims)
+     
+  def __init__(self, other: Block[E,T,C]):
+    self.base = Multidim(other.base, True)
+
+  def __init__(self, other: View[E,T,C]):
+    self.base = Multidim(other.base, True)
+
+  def __init__(self, other: Multidim[E,T,C]):
+    self.base = other
+
+  def dims(self) -> T:
+    return self.base.dims()
+
+  def nunits(self) -> int:
+    return self.base.nunits()
+
+  def origin(self) -> T:
+    return self.base.origin()
+
+  def remap(self, other: Block[E,T,C]) -> Block[E,T,C]:
+    self.remap(other.base)
+    return self
+
+  def origin_relative_to(self, other: Block[E,T,C]) -> T:
+    return self.base.origin_relative_to(other.base)
+
+  def origin_relative_to(self, other: View[E,T,C]) -> T:
+    return self.base.origin_relative_to(other.base)
+
+  def set_density(self, *dims) -> Block[E,T,C]:
+    return Block(self.base.set_density(*dims))
+
+  def __call__(self) -> E:
+    return self.base.__call__()
+
+  def __call__(self, idx: int, *idxs) -> E:
+    return self.base.__call__(idx, *idxs)
+
+  def __setitem__(self, idx: Block[E,T,C], item: E):
+    self.base[idx.base] = item
+
+  def __setitem__(self, idx: View[E,T,C], item: E):
+    self.base[idx.base] = item
+
+  def __setitem__(self, idxs, item):
+    self.base[idxs] = item
+
+  def __setitem__[T2,C2](self, idxs, item: Block[E,T2,C2]):
+    self.base[idxs] = item.base
+
+  def __setitem__[T2,C2](self, idxs, item: View[E,T2,C2]):
+    self.base[idxs] = item.base
+
+  def __setitem__(self, relative_name: str, relative: Block[E,T,C]):
+    self.base[relative_name] = relative.base
+
+  def __setitem__(self, relative_name: str, relative: View[E,T,C]):
+    self.base[relative_name] = relative.base
+
+  def __getitem__(self, idxs) -> View[E,T,C]:
+    return View(self.base[idxs])
+
+  def __getitem__(self, idx: Block[E,T,C]) -> View[E,T,C]:
+    return View(self.base[idx.base]) 
+
+  def __getitem__(self, idx: View[E,T,C]) -> View[E,T,C]:
+    return View(self.base[idx.base]) 
+
+  def __getitem__(self, relative: str) -> View[E,T,C]:
+    return View(self.base[relative])
+
+  def __str__(self) -> str:
+    return str(self.base)
+
+  def __eq__(self, val) -> bool:
+    return self.base == val
+
+  def __eq__(self, val: Block[E,T,C]) -> bool:
+    return self.base == val.base
+
+  def __eq__(self, val: View[E,T,C]) -> bool:
+    return self.base == val.base
+
+  def __ne__(self, val) -> bool:
+    return not (self == val)
+
+  def loc_eq(self, other: View[E,T,C]) -> bool:
+    return self.base.loc_eq(other.base)
+
+  def loc_eq(self, other: Block[E,T,C]) -> bool:
+    return self.base.loc_eq(other.base)
+
+  def buffer_owner(self) -> Block[E,T,C]:
+    return Block(self.base._buffer_owner)
+
+  def default_fill(self,add=0):
+    self.base.default_fill(add)
+    return self
+
+  def read(self, fd, bytes_per_elem: int, nelems: int):
+    """
+    Read data from self.fp into the raw underlying buffer belonging to buff.
+    This starts in buff.base.buffer at the mapping specified by buff, but
+    then just writes contiguously, so beware if you have stride or sub-regions.
+    """
+    self.base.read(fd, bytes_per_elem, nelems)
+
+  def write(self, fd, bytes_per_elem: int, nelems: int):
+    """
+    Write data from buff into self.fp. 
+    This starts in buff.base.buffer at the mapping specified by buff, but
+    then just reads contiguously, so beware if you have stride or sub-regions.
+    """
+    self.base.write(fd, bytes_per_elem, nelems)
+
+@extend
+class View[E,T,C]:
+
+  def __init__(self, other: Block[E,T,C]):
+    self.base = Multidim(other.base, False)
+
+  def __init__(self, other: View[E,T,C]):
+    self.base = Multidim(other.base, False)
+
+  # for internal building
+  def __init__(self, other: Multidim[E,T,C]):
+    self.base = other
+
+  def dims(self) -> T:
+    return self.base.dims()
+
+  def nunits(self) -> int:
+    return self.base.nunits()
+
+  def origin(self) -> T:
+    return self.base.origin()
+
+  def origin_relative_to(self, other: Block[E,T,C]) -> T:
+    return self.base.origin_relative_to(other.base)
+
+  def origin_relative_to(self, other: View[E,T,C]) -> T:
+    return self.base.origin_relative_to(other.base)
+
+  def __call__(self) -> E:
+    return self.base.__call__()
+
+  def __call__(self, idx: int, *idxs) -> E:
+    return self.base.__call__(idx, *idxs)
+
+  def clamp(self, idx: int, *idxs) -> E:
+    return self.base.clamp(idx, *idxs)
+
+  def clamp(self) -> E:
+    return self.base.clamp()
+
+  def clamp(self, other: Block[E,T,C]) -> View[E,T,C]:
+    return View(self.base.clamp(other.base))
+
+  def clamp(self, other: View[E,T,C]) -> View[E,T,C]:
+    return View(self.base.clamp(other.base))
+  
+  def exists(self) -> bool:
+    return self.base.fully_contained(self.base._buffer_owner)
+  
+  def set_density(self, *dims) -> Block[E,T,C]:
+    return Block(self.base.set_density(*dims))
+
+  def __setitem__(self, idx: Block[E,T,C], item: E):
+    self.base[idx.base] = item
+
+  def __setitem__(self, idx: View[E,T,C], item: E):
+    self.base[idx.base] = item
+
+  def __setitem__(self, idxs, item):
+    self.base[idxs] = item
+
+  def __setitem__[T2,C2](self, idxs, item: Block[E,T2,C2]):
+    self.base[idxs] = item.base
+
+  def __setitem__[T2,C2](self, idxs, item: View[E,T2,C2]):
+    self.base[idxs] = item.base
+
+  def __setitem__(self, relative_name: str, relative: Block[E,T,C]):
+    self.base[relative_name] = relative.base
+
+  def __setitem__(self, relative_name: str, relative: View[E,T,C]):
+    self.base[relative_name] = relative.base
+
+  def __getitem__(self, idx: Block[E,T,C]) -> View[E,T,C]:
+    return View(self.base[idx.base]) 
+
+  def __getitem__(self, idx: View[E,T,C]) -> View[E,T,C]:
+    return View(self.base[idx.base]) 
+
+  def __getitem__(self, idxs) -> View[E,T,C]:
+    return View(self.base[idxs])
+
+  def __getitem__(self, relative: str) -> View[E,T,C]:
+    return View(self.base[relative])
+
+  def __str__(self) -> str:
+    return str(self.base)
+
+  def __eq__(self, val) -> bool:
+    return self.base == val
+
+  def __eq__(self, val: Block[E,T,C]) -> bool:
+    return self.base == val.base
+
+  def __eq__(self, val: View[E,T,C]) -> bool:
+    return self.base == val.base
+
+  def __ne__(self, val) -> bool:
+    return not (self == val)
+
+  def loc_eq(self, other: View[E,T,C]) -> bool:
+    return self.base.loc_eq(other.base)
+
+  def loc_eq(self, other: Block[E,T,C]) -> bool:
+    return self.base.loc_eq(other.base)
+
+  def buffer_owner(self) -> Block[E,T,C]:
+    return Block(self.base._buffer_owner)
+
+  def default_fill(self, add=0):
+    self.base.default_fill(add)
+    return self
+
+  def read(self, fd, bytes_per_elem: int, nelems: int):
+    """
+    Read data from self.fp into the raw underlying buffer belonging to buff.
+    This starts in buff.base.buffer at the mapping specified by buff, but
+    then just writes contiguously, so beware if you have stride or sub-regions.
+    """
+    self.base.read(fd, bytes_per_elem, nelems)
+
+  def write(self, fd, bytes_per_elem: int, nelems: int):
+    """
+    Write data from buff into self.fp. 
+    This starts in buff.base.buffer at the mapping specified by buff, but
+    then just reads contiguously, so beware if you have stride or sub-regions.
+    """
+    self.base.write(fd, bytes_per_elem, nelems)
+
+### Arithmetic ###
+# I put this separately so it doesn't clutter up the initial class defs
+# Arithmetic creates a new cgrid. You can choose to remap it if you want
+@extend 
+class Multidim[E,T,C]:
+  def __sub__(self, other: Multidim[E,T,C]):
+    assert self.dims() == other.dims()
+    res = Multidim[E,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = self(n) - other(n)
+    return res
+
+@extend
+class Block[E,T,C]:
+  def __sub__(self, other: Block[E,T,C]) -> Block[E,T,C]:
+    return Block(self.base - other.base)
+
+  def __sub__(self, other: View[E,T,C]) -> Block[E,T,C]:
+    return Block(self.base - other.base)
+
+@extend
+class View[E,T,C]:
+  def __sub__(self, other: Block[E,T,C]) -> Block[E,T,C]:
+    return Block(self.base - other.base)
+
+  def __sub__(self, other: View[E,T,C]) -> Block[E,T,C]:
+    return Block(self.base - other.base)
+
+### Some useful extensions
+
+@extend
+class Array[T]:
+
+  def __str__(self) -> str:
+    return '[' + ','.join([str(self[i]) for i in range(self.len)]) + ']'
+
+  def __iter__(self):
+    for i in range(self.len):
+      yield self[i]
+    
+  def __eq__(self, other: Array[T]):
+    if len(self) != len(other):
+      return False
+    for i in range(len(self)):
+      if self[i] != other[i]:
+        return False
+    return True
+
+  def __ne__(self, other: Array[T]):
+    return not (self == other)
+
+  def __eq__(self, other: list[T]):
+    if len(self) != len(other):
+      return False
+    for i in range(len(self)):
+      if self[i] != other[i]:
+        return False
+    return True
+
+  def __ne__(self, other: list[T]):
+    return not (self == other)
+
+  def __match__(self, other: Array[T]) -> bool:
+    return self == other
+
+  def __match__(self, other: list[T]) -> bool:
+    if len(self) != len(other):
+      return False
+    for s,o in zip(self, other):
+      if s != 0:
+        return False
+    return True  
+
+@extend
+class list[T]:
+  def __match__(self, other: list[T]) -> bool:
+    return self == other
+
+  def __match__(self, other: Array[T]) -> bool:
+    return other.__match__(self)
+
+def run_tests():
+  print 'Running block.seq tests'
+  blk = Block.make[int](4,5).default_fill(1)
+  @test
+  def t0():
+    assert blk.base._buffer == [r+1 for r in range(20)]
+  t0()
+  @test
+  def t1():
+    assert blk[2,3] == 14
+    assert blk(2,3) == 14
+    assert blk[13] == 14
+    assert blk(13) == 14
+  t1()
+  blk2 = Block(blk[1::2,1:])
+  for i in range(blk2.nunits()):    
+    blk2[i] = i*10
+  @test
+  def t2():
+    assert blk2.base._buffer == [r*10 for r in range(blk2.nunits())]
+    assert blk2.dims() == (2,4)
+    assert blk2.origin() == (1,1)
+    assert blk2.origin_relative_to(blk) == (1,1)
+  t2()
+  view = blk2[:,::3]
+  @test
+  def t3():
+    assert view == [0, 30, 40, 70]
+    assert view.dims() == (2,2)
+    assert view.origin() == (1,1)
+    assert view.origin_relative_to(blk) == (1,1)
+    assert view.origin_relative_to(blk2) == (0,0)
+  t3()
+  view[1,0] = 41
+  @test
+  def t4():
+    assert view[1,0] == [41]
+  t4()
+  view2 = blk2[1:,1::2]
+  @test
+  def t5():
+    assert view2 == [50, 70]
+  t5()
+  view3 = blk2[1:,1:]
+  @test
+  def t6():
+    assert view3 == [50, 60, 70]
+    assert view3[:,-1:] == [41, 50, 60, 70]
+  t6()
+  ref4x4 = Block.make[int](4,4).default_fill(0)
+  est4x4 = Block.make[int](4,4).default_fill(1)
+  @test
+  def t7():
+    diff = ref4x4-est4x4
+    assert diff == [-1] * 16
+  t7()
+  @test
+  def t8():
+    ablk = Block.make[int](4,8).default_fill()
+    view = ablk[:,1:7:2]
+    assert view.clamp(-1,-1) == 0
+    assert view.clamp(10,20) == 31
+    view2 = view[-1:10,-13:3]
+    assert view2.clamp(view) == view
+    assert view2.clamp(ablk) == ablk[:,:6:2]
+  t8()
+  @test
+  def t9():
+    blk = Block.make[int](20).default_fill()
+    view = blk[1:11:3]
+    assert view == [1,4,7,10]
+    view2 = blk[4::6]
+    assert view2 == [4,10,16]
+    view3 = view[view2]
+    assert view3 == [4,10,16]
+    view4 = view3.clamp(view)
+    assert view4 == [4,10]
+  t9()
+  @test
+  def t10():
+    blk = Block.make[int](16,16).default_fill()
+    sblk = blk[12:,12:]
+    sblk['macroblock'] = blk
+    assert sblk['macroblock'] == blk
+  t10()
+    
+run_tests()

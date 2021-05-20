@@ -1,0 +1,300 @@
+from block import Block,View
+from flagtree import FlagTree
+
+class AndPTree[E,T,C]:
+
+  value: View[E,T,C]
+
+  children: list[AndPTree[E,T,C]]
+
+  def __init__(self, value: Block[E,T,C]):
+    self.children = []
+    self.value = View(value)
+
+  def __init__(self, value: View[E,T,C]):
+    self.children = []
+    self.value = value
+
+  def __init__(self):
+    self.children = []
+
+  def add_child(self, child: AndPTree[E,T,C]):
+    self.children.append(child)
+
+  def reset_child(self, idx: int, child: AndPTree[E,T,C]):
+    assert idx < len(self.children)
+    self.children[idx] = child
+
+  def _iterate_leaves(self):
+    if len(self.children) == 0:
+      yield self.value
+    else:
+      for child in self.children:
+        yield from child._iterate_leaves()
+
+  def do_iter(self):
+    return self._iterate_leaves()
+
+  def __getitem__(self, idx: int):
+    it = iter(self)
+    i = 0
+    while i < idx:
+      next(it)
+      i += 1
+    item = next(it)
+    it.destroy()
+    return item
+
+  def _inner_str(self, indent) -> str:
+    s = ''
+    if len(self.children) == 0:
+      s += ' ' * indent + 'LEAF @' + str(self.value.origin()) + '\n'
+    else:
+      s += ' ' * indent + 'AND @' + str(self.value.origin()) + '\n'
+      for child in self.children:
+        s += child._inner_str(indent+2)
+    return s
+
+  def __str__(self):
+    return self._inner_str(0)
+
+  def clone(self) -> AndPTree[E,T,C]:
+    cloned = AndPTree[E,T,C](self.value)
+    for child in self.children:
+      cloned.add_child(child.clone())
+    return cloned
+
+  # compare the leaves to see if they have the same size and global origin
+  def leaves_equal(self, leaves: list[Tuple[list[int], list[int]]]): # list[Tuple[list[dim], list[origin]]]
+    for idx,leaf in enumerate(self):
+      if idx >= len(leaves):
+        return False
+      ref_leaf = leaves[idx]
+      ref_dims = ref_leaf[0]
+      ref_origin = ref_leaf[1]
+      this_dims = leaf.dims_abs()
+      this_origin = leaf.origin()
+      if len(ref_dims) != len(this_dims):
+        return False
+      if len(ref_origin) != len(this_origin):
+        return False
+      for r,t in zip(ref_dims, this_dims):
+        if r != t:
+          return False
+      for r,t, in zip(ref_origin, this_origin):
+        if r != t:
+          return False
+    return True
+
+  def to_flagtree[F](self, default_value: F) -> FlagTree[E,T,C,F]:
+    """
+    Create an associated flag tree containing flags of type F.
+    """
+    ft = FlagTree[E,T,C,F](default_value, self.value)
+    for child in self.children:
+      ft.add_child(child.to_flagtree(default_value))
+    return ft    
+    
+@dataclass(init=False)
+class PTree[E,T,C]:
+
+  is_and_node: bool
+
+  nandtrees: int
+
+  value: View[E,T,C]
+
+  children: list[PTree[E,T,C]]
+    
+  def __init__(self, value: Block[E,T,C]):
+    self.children = []
+    self.value = View(value)
+    self.nandtrees = 0
+    self.is_and_node = True
+
+  def __init__(self, value: View[E,T,C]):
+    self.children = []
+    self.value = value
+    self.nandtrees = 0
+    self.is_and_node = True
+
+  def __init__(self, is_and_node: bool, value: Block[E,T,C]):
+    self.is_and_node = is_and_node
+    self.children = []
+    self.nandtrees = 0  
+    self.value = View(value)
+
+  def __init__(self, is_and_node: bool, value: View[E,T,C]):
+    self.is_and_node = is_and_node
+    self.children = []
+    self.nandtrees = 0
+    self.value = value
+
+  def __init__(self, is_and_node: bool, value: Block[E,T,C], children):
+    self.is_and_node = is_and_node
+    self.children = children
+    self.nandtrees = 0  
+    self.value = View(value)
+
+  def __init__(self, is_and_node: bool, value: View[E,T,C], children):
+    self.is_and_node = is_and_node
+    self.children = children
+    self.nandtrees = 0  
+    self.value = value
+
+  def add_child(self, child: PTree[E,T,C]):
+    self.children.append(child)
+
+  def add_child(self, child): # Block or View
+    pt = PTree(child)
+    self.add_child(pt)    
+
+  def _compute_nandtrees(self):
+    if len(self.children) == 0:
+      self.nandtrees = 1
+    else:
+      for child in self.children:
+        child._compute_nandtrees()
+        child_nandtrees = child.nandtrees        
+        if self.is_and_node:
+          if self.nandtrees == 0:
+            self.nandtrees = 1
+          self.nandtrees *= child_nandtrees
+        else: # or
+          self.nandtrees += child_nandtrees
+
+  def _reset_nandtrees(self):
+    self.nandtrees = 0
+    for child in self.children:
+      child._reset_nandtrees()
+
+  def do_iter(self):
+    self._reset_nandtrees()
+    self._compute_nandtrees()
+    return self._generate_andtrees()
+
+  # get a particular andtree
+  def __getitem__(self, idx: int) -> AndPTree[E,T,C]:
+    it = self.do_iter()
+    i = 0
+    while i < idx:
+      next(it)
+      i += 1
+    item = next(it)
+    it.destroy()
+    return item
+
+  def _generate_and_subtree(self, cur_depth, andn):
+    child = self.children[cur_depth]
+    gen = child._generate_andtrees()
+    for i in range(child.nandtrees):
+      node = next(gen)
+      if len(andn.children) < len(self.children):
+        # an initial pass, so append
+        andn.add_child(node)
+      else:
+        andn.reset_child(cur_depth, node)
+      if cur_depth == len(self.children) - 1:
+        # last iteration, so we have completed an and tree
+        yield 1 # dummy value
+      else:
+        yield from self._generate_and_subtree(cur_depth+1, andn)
+      
+  def _generate_andtrees(self):
+    if len(self.children) == 0:
+      apt = AndPTree[E,T,C](self.value)
+      yield apt
+    elif self.is_and_node:
+      andn = AndPTree[E,T,C](self.value) # this tree gets continually modified every time gen is called
+      gen = self._generate_and_subtree(0, andn)
+      idx = 0
+      for i in range(self.nandtrees):
+        # this fills the andtree
+        next(gen)
+        yield andn.clone()
+    else:
+      # or node 
+      for child in self.children:
+        gen = child._generate_andtrees()
+        # this does like a depth-first separation
+        idx = 0
+        for i in range(child.nandtrees):
+          idx += 1
+          andn = AndPTree[E,T,C](self.value)      
+          n = next(gen)
+          andn.add_child(n)
+          yield andn
+
+  def _inner_str(self, indent):
+    s = ''
+    if len(self.children) == 0:
+      s += ' ' * indent + 'LEAF ' + str(self.nandtrees) + ' ' + str(self.value.dims()) + '@' + str(self.value.origin()) + '\n'
+    elif self.is_and_node:
+      s += ' ' * indent + 'AND ' + str(self.nandtrees) + ' ' + str(self.value.dims()) + '@' + str(self.value.origin()) + '\n'
+      for child in self.children:
+        s += child._inner_str(indent+2)
+    else:
+      s += ' ' * indent + 'OR ' + str(self.nandtrees) + ' ' + str(self.value.dims()) + '@' + str(self.value.origin()) + '\n'
+      for child in self.children:
+        s += child._inner_str(indent+2)
+    return s
+
+  def __str__(self):
+    self._reset_nandtrees()
+    self._compute_nandtrees()
+    return self._inner_str(0)
+
+  # compare the leaves to see if they have the same size and global origin
+  # this compares the individual andtrees that result
+  def andtrees_equal(self, leaves: list[list[Tuple[list[int], list[int]]]]): # list of andtree leaves
+    for idx,andtree in enumerate(self):
+      if not andtree.leaves_equal(leaves[idx]):
+        return False
+    return True
+
+def build_tree(node):
+  dims = node.dims()
+  nvert_a = node[:,:dims[1]//2]
+  nvert_b = node[:,dims[1]//2:]
+  nhor_a = node[:dims[0]//2,:]
+  nhor_b = node[dims[0]//2:,:]
+  ngrid_a = node[:dims[0]//2,:dims[1]//2]
+  ngrid_b = node[:dims[0]//2,dims[1]//2:]
+  ngrid_c = node[dims[0]//2:,:dims[1]//2]
+  ngrid_d = node[dims[0]//2:,dims[1]//2:]
+  if dims[0] == 8:
+    # don't split more
+    return PTree(False, node,
+                 [
+                   PTree(True, node),
+                   PTree(True, node, [PTree(nvert_a),PTree(nvert_b)]),
+                   PTree(True, node, [PTree(nhor_a),PTree(nhor_b)]),
+                   PTree(True, node, [PTree(ngrid_a), 
+                                      PTree(ngrid_b), 
+                                      PTree(ngrid_c), 
+                                      PTree(ngrid_d)])
+                 ])
+  else:
+    return PTree(False, node,
+                 [
+                   PTree(True, node),
+                   PTree(True, node, [PTree(nvert_a),PTree(nvert_b)]),
+                   PTree(True, node, [PTree(nhor_a),PTree(nhor_b)]),
+                   PTree(True, node, [PTree(True, ngrid_a, [build_tree(ngrid_a)]), 
+                                      PTree(True, ngrid_b, [build_tree(ngrid_b)]), 
+                                      PTree(True, ngrid_c, [build_tree(ngrid_c)]), 
+                                      PTree(True, ngrid_d, [build_tree(ngrid_d)])])
+                 ])
+
+def debug():
+  block = Block.make[int](16,16)
+  ptree = build_tree(block)
+  print ptree
+  atree = ptree[37]
+  print atree
+  ftree = atree.to_flagtree[int](-1)
+  print ftree
+  ftree[block[5,9]] = 37
+  print ftree
+                 
+debug()

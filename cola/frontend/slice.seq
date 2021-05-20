@@ -1,0 +1,69 @@
+import math
+
+# A ColaSlice is adjusted on creation, so we do not need to unwrap the optionals
+# on every access
+#@tuple(init=False)
+class ColaSlice:
+  start: int
+  stop: int
+  stride: int
+  effective_sz: int
+
+  def __init__(self, start: int, stop: int, stride: int):
+    sz,tight = ColaSlice._compute_effective_sz(start, stop, 1, stride-1)
+    self.start = start
+    self.stop = tight
+    self.stride = stride
+    self.effective_sz = sz
+    #    return start,tight,stride,sz
+
+  def __eq__(self, other: ColaSlice):
+    return self.start == other.start and self.stop == other.stop and self.stride == other.stride
+
+  def __ne__(self, other: ColaSlice):
+    return not (self == other)
+
+  def _compute_effective_sz(start, stop, take, skip) -> Tuple[int,int]:
+    full_range = stop - start
+    # get all the groupings of take + skip that fit into the range
+    full_range_takes = full_range // (take + skip)
+    # see whatever is left
+    left_over = full_range % (take + skip)
+    # could have some takes with only part of a skip, which still becomes a take
+    left_over_takes = 1 if left_over >= take else 0    
+    # all the groups of takes we could take
+    all_takes = left_over_takes + full_range_takes
+    nelems_take = all_takes * take
+    all_skips = all_takes - 1
+    nelems_skip = all_skips * skip
+    return all_takes,start+nelems_take+nelems_skip
+
+  def __str__(self):
+    return str(self.start) + ':' + str(self.stop) + ':' + str(self.stride) + '(' + str(self.effective_sz) + ')'
+    
+@extend
+class Slice:
+
+  def cola_adjust(self, dlen) -> ColaSlice:
+    start = ~self.start if self.start else 0
+    stop = ~self.stop if self.stop else dlen
+    stride = ~self.step if self.step else 1
+    return ColaSlice(start,stop,stride)
+
+  def adjust(self, dlen) -> Slice:
+    start = ~self.start if self.start else 0
+    stop = ~self.stop if self.stop else dlen
+    stride = ~self.step if self.step else 1
+    return Slice(start,stop,stride)
+
+def run_tests():
+  @test
+  def t0():
+    assert ColaSlice(0,4,3) == (0,4,3,2)
+    assert ColaSlice(0,5,3) == (0,4,3,2)
+    assert ColaSlice(0,6,3) == (0,4,3,2)
+    assert ColaSlice(0,7,3) == (0,7,3,3)
+    assert ColaSlice(0,3,1) == (0,3,1,3)
+    assert ColaSlice(0,3,2) == (0,3,2,2)
+    assert ColaSlice(0,4,2) == (0,3,2,2)
+    assert ColaSlice(0,5,2) == (0,5,2,3)

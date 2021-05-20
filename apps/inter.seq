@@ -1,0 +1,130 @@
+from ..cola.frontend.block import *
+from ..cola.frontend.traversal import *
+from ..cola.frontend.scan import *
+from cost import *
+
+
+# Functions for defining traversal shapes for motion estimation
+class MotionShape:
+
+  # the traversal for a diamond
+  def diamond(radius: int=1):
+    diamt = Traversal(2)
+    diamt.add_astep((-radius,0))
+    diamt.add_astep((1,-1), radius)
+    diamt.add_astep((1,1), radius)
+    diamt.add_astep((-1,1), radius)
+    diamt.add_astep((-1,-1), radius-1)
+    return diamt
+
+  def hexagon(radius:int):
+    hext = Traversal(2)
+    if radius == 1:
+      hext.add_link(MotionShape.diamond(1))
+    else:
+      hext.add_astep((-radius,-(radius-1)))
+      hext.add_astep((radius,-(radius-1)))
+      hext.add_astep((radius,radius-1))
+      hext.add_astep((0,radius*2-2))
+      hext.add_astep((-radius,radius-1))
+      hext.add_astep((-radius,-(radius-1)))
+    return hext
+
+  def raster(ht: int, wt: int):
+    rast = Traversal(2)
+    rast.add_astep((0,1), wt)
+    for h in range(1,ht):
+      rast.add_astep((1,-(wt-1)))
+      rast.add_astep((0,1), wt)
+    return rast      
+
+# Functions for actually executing a block-based motion search
+# https://cdn.intechopen.com/pdfs/33733/InTech-H_264_motion_estimation_and_applications.pdf
+class BlockMotionSearch:
+
+  def _search_from[T,N:int](search_region: View[T,N], search_center: View[T,N], cur_blk_region: View[T,N], \
+                            cur_blk_center: View[T,N], traversal: Traversal, cost_func, max_iters: int, cur_iters: int):
+    print('iter ' + str(cur_iters))
+    min_cost = 9999999  # TODO get_int_max
+    best_pos = search_center
+    for spos,rpos in scan(traversal(search_center), traversal(cur_blk_center)):
+      val = spos.clamp(search_region)()
+      rval = rpos.clamp(cur_blk_region)()
+      cost = cost_func(val, rval)
+      print(str(val) + ' ' + str(rval) + ' -> ' + str(cost))
+      if cost < min_cost:
+        min_cost = cost
+        best_pos = spos.clamp(search_region)
+    cur_iters += 1
+    if search_center.loc_eq(best_pos) or (max_iters != -1 and cur_iters >= max_iters):
+      return best_pos
+    else:
+      # restart the search from best_pos      
+      return BlockMotionSearch._search_from(search_region, best_pos, cur_blk_region, cur_blk_center, traversal, cost_func,  max_iters, cur_iters)
+
+  # search_region: area in a reference frame we are allowed to search through
+  # cur_blk: the area we are trying to predict
+  def search_one_step[T,N:int](search_region: View[T,N], cur_blk: View[T,N], traversal: Traversal, cost_func, max_iters:int=-1):
+    # get the center of the search region and start there
+    center_loc = [d//2 for d in search_region.dims()]
+    center = search_region[center_loc]
+    # get center of blk too
+    blk_center_loc = [d//2 for d in cur_blk.dims()]
+    blk_center = cur_blk[blk_center_loc]
+    return BlockMotionSearch._search_from(search_region, center, cur_blk, blk_center, traversal, cost_func, max_iters, 0)
+
+
+  def search_two_step[T,N:int](search_region: View[T,N], cur_blk: View[T,N], traversal: Traversal, \
+                                traversal2: Traversal, cost_func) -> View[T,N]:
+    # get the center of the search region and start there
+    center_loc = [d//2 for d in search_region.dims()]
+    center = search_region[center_loc]
+    # get center of blk too
+    blk_center_loc = [d//2 for d in cur_blk.dims()]
+    blk_center = cur_blk[blk_center_loc]
+    print('Traversal 1')
+    best_pos = BlockMotionSearch._search_from(search_region, center, cur_blk, blk_center, traversal, cost_func, -1, 0)
+    print('Traversal 2')
+    best_pos = BlockMotionSearch._search_from(search_region, best_pos, cur_blk, blk_center, traversal2, cost_func, 1, 0)
+    return best_pos
+  
+  def compute_motion_vector[T,N:int](cur_blk_frame: View[T,N], cur_blk: View[T,N], ref_frame: View[T,N], best_ref_center: View[T,N], search_region: View[T,N]) -> list[int]:
+    # get the difference between the cur_blk center and cur_blk upper-left corner to figure out how much the "center" is offset
+    # (if the dims of cur_blk are even amounts, there isn't actually a center which is why we need this offset)
+    half_dims = [d//2 for d in cur_blk.dims()]
+    # we want a negative offset, which is why it's ordered this way
+    offset = cur_blk.origin_relative_to(cur_blk[half_dims])
+    # that offset is how much to shift the best_ref_center
+    # you could go out of your search region finding the corner, so clamp that
+    corner = best_ref_center[offset].clamp(search_region)
+    corner_in_frame = corner.colocate(ref_frame, cur_blk_frame)
+    motion_vec = corner_in_frame.origin_relative_to(cur_blk)
+    return motion_vec
+    
+def debug():
+  cur_frame = Block[int,2](10,10).default_fill()
+  ref_frame = Block[int,2](10,10).default_fill()
+  print(cur_frame)
+  diamond_small = MotionShape.diamond()
+  diamond_big = MotionShape.diamond(2)
+  search_region = ref_frame[:6,:6]
+  cur_blk = cur_frame[5:9,5:9]
+  print(search_region)
+  print(cur_blk)
+  best_pos = BlockMotionSearch.search_two_step(search_region, cur_blk, diamond_big, diamond_small, Cost.sad)
+  # compute the motion vector
+  # this requires some underlying knowledge of the shape of ref_frame and cur_frame since we need to do some "co-location"
+  motion_vec = BlockMotionSearch.compute_motion_vector(cur_blk, best_pos, search_region)
+  print('Motion vector: ' + str(motion_vec))
+  
+  hexagon_big = MotionShape.hexagon(2)
+  BlockMotionSearch.search_one_step(search_region, cur_blk, hexagon_big, Cost.sad)
+  
+#  print('r1')
+#  for pt in scan(diamond_r1):
+#    print(pt.bclamp())
+#  print('r2')
+#  for pt in scan(diamond_r2):
+#    print(pt.bclamp())
+
+debug()

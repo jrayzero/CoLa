@@ -1,0 +1,27 @@
+from slice import *
+
+# various (mainly recursive) tuple operations for CoLa
+
+def mul_reduce(tup):
+  if staticlen(tup) == 0:
+    return 1
+  else:
+    return tup[0] * mul_reduce(tup[1:])
+
+def subtract_tuples[T](tupA: T, tupB: T) -> T:
+  if staticlen(tupA) == 0:
+    return ()
+  else:
+    return (tupA[0] - tupB[0],) + subtract_tuples(tupA[1:], tupB[1:])
+
+def mul_tuples[T](tupA: T, tupB: T) -> T:
+  if staticlen(tupA) == 0:
+    return ()
+  else:
+    return (tupA[0] * tupB[0],) + subtract_tuples(tupA[1:], tupB[1:])
+
+def equal_tuples[T](tupA: T, tupB: T) -> bool:
+  if staticlen(tupA) == 0:
+    return True
+  else:
+    return tupA[0] == tupB[0] and equal_tuples(tupA[1:], tupB[1:])

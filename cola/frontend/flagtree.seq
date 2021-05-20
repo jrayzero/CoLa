@@ -1,0 +1,86 @@
+from block import Block,View
+
+@dataclass(init=False)
+class FlagTree[E,T,C,F]:
+  """
+  Set of flags corresponding to a partition defined by an AndPTree. See AndPTree for
+  the to_flagtree function. This is extremely similar to the structure of AndPTree.
+  F = type of flag value
+  """
+
+  value: View[E,T,C]
+  children: list[FlagTree[E,T,C,F]]
+  flag: F # all nodes get this, even if they aren't leaves. But non-leaves will never get returned, so it's find.
+
+  def __init__(self, flag: F, value: View[E,T,C]):
+    self.value = value
+    self.flag = flag
+    self.children = []
+
+  def __init__(self, flag: F, value: Block[E,T,C]):
+    self.value = View(value)
+    self.flag = flag
+    self.children = []
+
+  def __init__(self, value: View[E,T,C]):
+    self.value = value
+    self.children = []
+
+  def __init__(self, value: Block[E,T,C]):
+    self.value = View(value)
+    self.children = []
+
+  def add_child(self, child: FlagTree[E,T,C,F]):
+    self.children.append(child)
+
+  def _iterate_leaves(self):
+    if len(self.children) == 0:
+      yield self.value
+    else:
+      for child in self.children:
+        yield from child._iterate_leaves()
+
+  def do_iter(self):
+    return self._iterate_leaves()
+
+  # TODO support reading/writing from multiple flags values if obj spans over multiple nodes
+  def __getitem__(self, obj: View[E,T,C]) -> Optional[F]:
+    """
+    Get flag value out of the node that completely encapsluates obj (or return None).
+    """
+    if len(self.children) == 0:
+      return self.flag
+    else:
+      for child in self.children:
+        if obj.base.fully_contained(child.value.base):
+          return child[obj]
+      # didn't find a node
+      return None
+      
+  def __setitem__(self, obj: View[E,T,C], flag: F):
+    """
+    Set flag value out for the node that completely encapsluates obj (or fail)
+    """    
+    if len(self.children) == 0:
+      self.flag = flag
+    else:
+      found = False
+      for child in self.children:
+        if obj.base.fully_contained(child.value.base):
+          child[obj] = flag
+          found = True
+          break
+      assert found
+
+  def _inner_str(self, indent) -> str:
+    s = ''
+    if len(self.children) == 0:
+      s += ' ' * indent + 'FLAG @' + str(self.value.origin()) + '(value=' + str(self.flag) + ')\n'
+    else:
+      s += ' ' * indent + 'AND @' + str(self.value.origin()) + '\n'
+      for child in self.children:
+        s += child._inner_str(indent+2)
+    return s
+
+  def __str__(self):
+    return 'FlagTree\n' + self._inner_str(0)

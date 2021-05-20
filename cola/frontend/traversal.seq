@@ -1,0 +1,252 @@
+from block import Block,View
+
+# ONLY WORKS FOR 2D TRAVERSALS!!
+
+class Movement:
+
+  # seek = 0, astep = 1, rstep = 2, arot = 3, rrot = 4
+  mtype: int
+  angle: Optional[int]
+  step: Tuple[int,int]
+  amt: int # for rstep
+  step_multiplier: Optional[int]
+
+  def __init__(self, mtype: int):
+    assert mtype == 0 or mtype == 1 or mtype == 2 or mtype == 3 or mtype == 4
+    self.mtype = mtype
+    self.step = (0,0)
+
+  def set_rotation(self, angle: int):
+    assert self.is_arot() or self.is_rrot()
+    assert abs(angle) % 45 == 0
+    self.angle = angle
+
+  def set_step(self, amt: int, step_multiplier=1):
+    assert self.is_rstep()
+    self.step_multiplier = step_multiplier
+    self.amt = amt
+
+  def set_step(self, step: Tuple[int,int], step_multiplier=1):
+    assert self.is_seek() or self.is_astep()
+    if self.is_seek():
+      assert step_multiplier == 1
+      if step[0] < 0 or step[1] < 0:
+        raise ColaError()
+    self.step = step
+    self.step_multiplier = step_multiplier
+
+  def is_seek(self):
+    return self.mtype == 0
+
+  def is_astep(self):
+    return self.mtype == 1
+
+  def is_rstep(self):
+    return self.mtype == 2
+
+  def is_arot(self):
+    return self.mtype == 3
+
+  def is_rrot(self):
+    return self.mtype == 4
+
+class Traversal:
+
+  movements: list[Movement]
+
+  origin: Tuple[int,int]
+
+  ndims: int
+
+  skip_origin_in_step: bool
+
+  # these are the asteps that correspond to a single step with the current
+  # orientation
+  clockwise_angle_steps: dict[int,Tuple[int,int]]
+
+  def __init__(self, ndims):
+    # only support 2D right now
+    assert ndims == 2
+    self.ndims = ndims
+    self.movements = []
+    self.origin = (0,0)
+    self.clockwise_angle_steps = {0:(0,1), 45:(1,1), 90:(1,0), 135:(1,-1), 180:(0,-1), 225:(-1,-1), 270:(-1,0), 315:(-1,1) }
+    self.skip_origin_in_step = False
+
+  def __init__(self, ndims, origin: Tuple[int,int]):
+    # only support 2D right now
+    assert ndims == 2
+    assert len(origin) == ndims
+    self.ndims = ndims
+    self.movements = []
+    self.origin = origin
+    self.clockwise_angle_steps = {0:(0,1), 45:(1,1), 90:(1,0), 135:(1,-1), 180:(0,-1), 225:(-1,-1), 270:(-1,0), 315:(-1,1) }
+    self.skip_origin_in_step = False
+
+  def add_movement(self, movement: Movement):
+    self.movements.append(movement)
+
+  def set_origin(self, origin: Tuple[int,int]):
+    self.origin = origin
+    return self
+
+  def add_aseek(self, coord):
+    movement = Movement(0)
+    movement.set_step(coord, 1)
+    self.add_movement(movement)
+
+  def add_seek(self, coord):
+    movement = Movement(0)
+    movement.set_step(coord, 1)
+    self.add_movement(movement)
+
+  def add_astep(self, vec, multiplier=1):
+    movement = Movement(1)
+    movement.set_step(vec, multiplier)
+    self.add_movement(movement)
+
+  def add_rstep(self, amt, multiplier=1):
+    movement = Movement(2)
+    movement.set_step(amt, multiplier)
+    self.add_movement(movement)
+
+  # Note to self: don't immediately convert these to asteps b/c rotations don't actually
+  # do a step themselves. I made this thought mistake once already.
+  # Also, rotations are only supported for 2 dims because I don't know how to 
+  # generalize them (something like an inverse projection...)
+  def add_arot(self, angle):
+    assert self.ndims == 2
+    movement = Movement(3)
+    movement.set_rotation(angle)
+    self.add_movement(movement)
+
+  def add_rrot(self, angle):
+    assert self.ndims == 2
+    movement = Movement(4)
+    movement.set_rotation(angle)
+    self.add_movement(movement)
+
+  def add_link(self, traversal: Traversal):
+    for movement in traversal.movements:
+      self.add_movement(movement)
+
+  def __call__(self, origin: Tuple[int,int]):
+    self.origin = origin
+
+  def _gen_coords(self, origin: Tuple[int,int]) -> Generator[Tuple[int,int]]:
+    if not self.skip_origin_in_step:
+      yield self.origin
+    cur_coord = origin
+    cur_angle = 0
+    for movement in self.movements:
+      if movement.is_seek():
+        cur_coord = movement.step
+        yield cur_coord
+      elif movement.is_astep():
+        for _ in range(~movement.step_multiplier):
+          cur_coord = (cur_coord[0]+movement.step[0], cur_coord[1]+movement.step[1])
+          yield cur_coord
+      elif movement.is_rstep():
+        step = self.clockwise_angle_steps[cur_angle % 360]
+        # multiply by the amt
+        step2 = (step[0] * movement.amt, step[1] * movement.amt)
+        for _ in range(~movement.step_multiplier):
+          cur_coord = (cur_coord[0] + step2[0], cur_coord[1] + step2[1])
+          yield cur_coord
+      elif movement.is_arot():
+        cur_angle = ~movement.angle
+      else:
+        cur_angle += ~movement.angle
+        
+  # iterating through this just returns the coordinates since it's not tied to any 
+  # particular block
+  def __iter__(self):
+    return self._gen_coords(self.origin)
+
+  def iter_with_origin(self, origin) -> Generator[Tuple[int,int]]:
+    return self._gen_coords(origin)
+
+  def __str__(self) -> str:
+    return ' -> '.join(tuple(str(coord) for coord in self))
+
+  # generate the coordinates and write them to file
+  # for use with plotting
+  def to_file(self, fn: str):
+    fd = open(fn, 'w')
+    for coord in self:
+      fd.write(str(coord[0]) + ',' + str(coord[1]) + '\n')
+    fd.flush()
+    fd.close()      
+
+class AStep:
+  step: Tuple[int,int]
+  mult: int
+  def __init__(self, step: tuple[int,int], mult: int=1):
+    self.step = step
+    self.mult = mult
+
+  def __add__(self, other: Traversal):
+    movement = Movement(1)
+    movement.set_step(self.step, self.mult)
+    other.movements.insert(0, movement)
+    return other
+
+  def __radd__(self, other: Traversal):
+    movement = Movement(1)
+    movement.set_step(self.step, self.mult)
+    other.add_movement(movement)
+    return other
+
+class AppliedTraversal[E,T,C]:
+  
+  traversal: Traversal
+  root: View[E,T,C]
+  origin: Tuple[int,int]
+
+  def __init__(self, traversal: Traversal, root: Block[E,T,C]):
+    self.traversal = traversal
+    self.root = View(root)
+    self.origin = traversal.origin #[0] * len(self.root.dims()) if len(traversal.origin) == 0 else [d for d in traversal.origin]
+
+  def __init__(self, traversal: Traversal, root: View[E,T,C]):
+    self.traversal = traversal
+    self.root = root
+    self.origin = traversal.origin #[0] * len(self.root.dims()) if len(traversal.origin) == 0 else [d for d in traversal.origin]
+
+  def __init__(self, traversal: Traversal, root: Block[E,T,C], origin: list[int]):
+    self.traversal = traversal
+    self.root = View(root)
+    self.origin = origin
+
+  def __init__(self, traversal: Traversal, root: View[E,T,C], origin: list[int]):
+    assert len(origin) == self.traversal.ndims
+    self.traversal = traversal
+    self.root = root
+    self.origin = origin
+
+  # not implemented as __iter__ cause I want the user to call scan
+  # generates view values
+  def do_iter(self) -> Generator[View[E,T,C]]:
+    assert len(self.origin) > 0
+    for coord in self.traversal.iter_with_origin(self.origin):
+      yield self.root[coord]
+
+  def __str__(self) -> str:
+    return ' -> '.join(tuple(str(item()) for item in self))
+
+  def trav_equals(self, ref: list[E]) -> bool:
+    idx = 0
+    for elem in self:
+      if elem() != ref[idx]:
+        return False
+      idx += 1
+    return True
+
+@extend 
+class Traversal:
+
+  def __call__[E,T,C](self, root: Block[E,T,C]) -> AppliedTraversal[E,T,C]:
+    return AppliedTraversal(self, root)
+
+  def __call__[E,T,C](self, root: View[E,T,C]) -> AppliedTraversal[E,T,C]:
+    return AppliedTraversal(self, root)

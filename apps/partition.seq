@@ -1,0 +1,25 @@
+from ..cola.frontend.ptree import *
+
+# TODO use shorthand notation once available in Codon
+
+class Partition:
+
+  def row_split(node, sz: int):
+    """
+    Split up into individual rows.
+    """
+    for r in range(0,node.dims()[0],sz):
+      yield node[r:r+sz,:]
+
+  def col_split(node, sz: int):
+    """
+    Split up into individual columns.
+    """
+    for c in range(0, node.dims()[1],sz):
+      yield node[:,c:c+sz]
+
+  def grid(root, blk_height: int, blk_width: int):
+    return PTree(True, root, [PTree(True, r, [PTree(c) for c in Partition.col_split(r,blk_width)]) for r in Partition.row_split(root,blk_height)])
+
+  def grid(root, sz: int):
+    return PTree(True, root, [PTree(True, r, [PTree(c) for c in Partition.col_split(r,sz)]) for r in Partition.row_split(root,sz)])

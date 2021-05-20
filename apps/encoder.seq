@@ -1,0 +1,51 @@
+from ..cola.frontend.block import *
+from ..cola.frontend.error import *
+from basic_io import *
+from partition import *
+from config import *
+from constants import *
+from validate_config import do_validate
+
+do_validate() 
+
+ifd = open(raw, 'rb')
+ofd = open(h264_out, 'wb')
+
+chroma_height,chroma_width = compute_chroma_frame_dims()
+luma_frame = Block.make[byte](frame_height, frame_width)
+Cb_frame = Block.make[byte](chroma_height, chroma_width) if chroma_format != SAMPLE_MONO else None
+Cr_frame = Block.make[byte](chroma_height, chroma_width) if chroma_format != SAMPLE_MONO else None
+
+for f in range(frames):
+  # read a frame
+  if input_cs == YUV_CS:
+    if chroma_format == SAMPLE_MONO:
+      # no notion of planar vs interleave
+      YUV.read_frame_mono(frame_height, frame_width, luma_frame, ifd, bit_depth)      
+    elif input_order == PLANAR:
+      if chroma_format == SAMPLE_420:
+        YUV.read_frame_420_planar(frame_height, frame_width, luma_frame, ~Cb_frame, ~Cr_frame, ifd, bit_depth)
+      elif chroma_format == SAMPLE_422:
+        YUV.read_frame_422_planar(frame_height, frame_width, luma_frame, ~Cb_frame, ~Cr_frame, ifd, bit_depth)
+      else: 
+        YUV.read_frame_444_planar(frame_height, frame_width, luma_frame, ~Cb_frame, ~Cr_frame, ifd, bit_depth)
+  # macroblock partition
+  Y_mbs = Partition.grid(luma_frame, 16)[0]
+  U_mbs = None
+  V_mbs = None
+  if chroma_format != SAMPLE_MONO:
+    if chroma_format == SAMPLE_420:
+      U_mbs = Partition.grid(Cb_frame, 8)[0]
+      V_mbs = Partition.grid(Cr_frame, 8)[0]
+    elif chroma_format == SAMPLE_422:
+      U_mbs = Partition.grid(Cb_frame, 16, 8)[0]
+      V_mbs = Partition.grid(Cr_frame, 16, 8)[0]
+    else:
+      U_mbs = Partition.grid(Cb_frame, 16)[0]
+      V_mbs = Partition.grid(Cr_frame, 16)[0]             
+  
+
+
+ifd.close()
+ofd.flush()
+ofd.close()

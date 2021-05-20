@@ -1,0 +1,223 @@
+from ..cola.frontend.error import *
+from ..cola.frontend.block import *
+from utils import validate_arg
+
+class Hadamard:
+
+  def hadamard(reference, estimate):  
+    diff = reference - estimate
+    diff = diff.remap(reference)
+    hmard = Block(diff)
+    dims = diff.dims()
+    # TODO use a match stmt here once it works so that I can more easily identify this in the compiler
+    if dims == (2,2):
+      raise NotImplementedError()
+    elif dims == (4,4):
+      Hadamard.hadamard4x4(diff, hmard)
+    elif dims == (8,8):
+      raise NotImplementedError()
+    else:
+      raise ColaError('bad dims ' + str(dims))
+    return hmard
+
+  def hadamard4x4[E,T,C](inp: Block[E,T,C], out: Block[E,T,C]):
+    Hadamard.hadamard4x4(View(inp), View(out))
+
+  def hadamard4x4[E,T,C](inp: Block[E,T,C], out: View[E,T,C]):
+    Hadamard.hadamard4x4(View(inp), out)    
+
+  def hadamard4x4[E,T,C](inp: View[E,T,C], out: Block[E,T,C]):
+    Hadamard.hadamard4x4(inp, View(out))
+
+  def hadamard4x4[E,T,C](inp: View[E,T,C], out: View[E,T,C]):
+    if N != 2 and N != 3:
+      raise ColaError('Hadamard supports 2D and 3D only')
+    # horizontal
+    for r in range(4):
+      in_row = inp[r,:] if N == 2 else inp[0,r,:]
+      out_row = out[r,:] if N == 2 else out[0,r,:]
+      p0 = in_row(0)
+      p1 = in_row(1)
+      p2 = in_row(2)
+      p3 = in_row(3)
+      t0 = p0 + p3
+      t1 = p1 + p2
+      t2 = p1 - p2
+      t3 = p0 - p3
+      out_row[0] = t0 + t1
+      out_row[1] = t3 + t2
+      out_row[2] = t0 - t1
+      out_row[3] = t3 - t2
+    # vertical
+    for c in range(4):
+      in_col = out[:,c] if N == 2 else out[0,:,c]
+      p0 = in_col(0)
+      p1 = in_col(1)
+      p2 = in_col(2)
+      p3 = in_col(3)
+      t0 = p0 + p3
+      t1 = p1 + p2
+      t2 = p1 - p2
+      t3 = p0 - p3
+      in_col[0] = (t0 + t1) >> T(1)
+      in_col[1] = (t2 + t3) >> T(1)
+      in_col[2] = (t0 - t1) >> T(1)
+      in_col[3] = (t3 - t2) >> T(1)
+
+  def ihadamard4x4[E,T,C](inp: Block[E,T,C], out: Block[E,T,C]):
+    Hadamard.ihadamard4x4(View(inp), View(out))
+
+  def ihadamard4x4[E,T,C](inp: Block[E,T,C], out: View[E,T,C]):
+    Hadamard.ihadamard4x4(View(inp), out)    
+
+  def ihadamard4x4[E,T,C](inp: View[E,T,C], out: Block[E,T,C]):
+    Hadamard.ihadamard4x4(inp, View(out))
+
+  def ihadamard4x4[E,T,C](inp: View[E,T,C], out: View[E,T,C]):
+    # horizontal
+    for r in range(4):
+      in_row = inp[r,:] if N == 2 else inp[0,r,:]
+      out_row = out[r,:] if N == 2 else out[0,r,:]
+      t0 = in_row(0)
+      t1 = in_row(1)
+      t2 = in_row(2)
+      t3 = in_row(3)
+      p0 = t0 + t2
+      p1 = t0 - t2
+      p2 = t1 - t3
+      p3 = t1 + t3
+      out_row[0] = p0 + p3
+      out_row[1] = p1 + p2
+      out_row[2] = p1 - p2
+      out_row[3] = p0 - p3
+    # vertical
+    for c in range(4):
+      in_col = out[:,c] if N == 2 else out[0,:,c]
+      t0 = in_col(0)
+      t1 = in_col(1)
+      t2 = in_col(2)
+      t3 = in_col(3)
+      p0 = t0 + t2
+      p1 = t0 - t2
+      p2 = t1 - t3
+      p3 = t1 + t3
+      in_col[0] = p0 + p3
+      in_col[1] = p1 + p2
+      in_col[2] = p1 - p2
+      in_col[3] = p0 - p3
+
+  def hadamard2x2[E,T,C](inp: Block[E,T,C], out: Block[E,T,C]):
+    Hadamard.hadamard2x2(View(inp), View(out))
+
+  def hadamard2x2[E,T,C](inp: Block[E,T,C], out: View[E,T,C]):
+    Hadamard.hadamard2x2(View(inp), out)    
+
+  def hadamard2x2[E,T,C](inp: View[E,T,C], out: Block[E,T,C]):
+    Hadamard.hadamard2x2(inp, View(out))
+      
+  def hadamard2x2(inp,out):
+    p0 = inp(0) + inp(1)
+    p1 = inp(0) - inp(1)
+    p2 = inp(2) + inp(3)
+    p3 = inp(2) - inp(3)
+    out[0] = p0 + p2
+    out[1] = p1 + p3
+    out[2] = p0 - p2
+    out[3] = p1 - p3
+
+  def ihadamard2x2[E,T,C](inp: Block[E,T,C], out: Block[E,T,C]):
+    Hadamard.ihadamard2x2(View(inp), View(out))
+
+  def ihadamard2x2[E,T,C](inp: Block[E,T,C], out: View[E,T,C]):
+    Hadamard.ihadamard2x2(View(inp), out)
+
+  def ihadamard2x2[E,T,C](inp: View[E,T,C], out: Block[E,T,C]):
+    Hadamard.ihadamard2x2(inp, View(out))
+
+  def ihadamard2x2(inp,out):
+    t0 = inp(0) + inp(1)
+    t1 = inp(0) - inp(1)
+    t2 = inp(2) + inp(3)
+    t3 = inp(2) - inp(3)
+    out[0] = t0 + t2
+    out[1] = t1 + t3
+    out[2] = t0 - t2
+    out[3] = t1 - t3
+    
+class DCT:
+
+  def dct4x4[E,T,C](inp: Block[E,T,C], out: Block[E,T,C]):
+    DCT.dct4x4(View(inp), View(out))
+
+  def dct4x4[E,T,C](inp: Block[E,T,C], out: View[E,T,C]):
+    DCT.dct4x4(View(inp), out)    
+
+  def dct4x4[E,T,C](inp: View[E,T,C], out: Block[E,T,C]):
+    DCT.dct4x4(inp, View(out))
+
+  def dct4x4[E,T,C](inp: View[E,T,C], out: View[E,T,C]):
+    # horizontal
+    for r in range(4):
+      in_row = inp[r,:] if N == 2 else inp[0,r,:]
+      out_row = out[r,:] if N == 2 else out[0,r,:]
+      p0 = in_row(0)
+      p1 = in_row(1)
+      p2 = in_row(2)
+      p3 = in_row(3)
+      t0 = p0 + p3
+      t1 = p1 + p2
+      t2 = p1 - p2
+      t3 = p0 - p3
+      out_row[0] = t0 + t1
+      out_row[1] = (t3 << T(1)) + t2
+      out_row[2] = t0 - t1
+      out_row[3] = t3 - (t2 << T(1))
+    # vertical
+    for c in range(4):
+      in_col = out[:,c] if N == 2 else out[0,:,c]
+      p0 = in_col(0)
+      p1 = in_col(1)
+      p2 = in_col(2)
+      p3 = in_col(3)
+      t0 = p0 + p3
+      t1 = p1 + p2
+      t2 = p1 - p2
+      t3 = p0 - p3
+      in_col[0] = t0 + t1
+      in_col[1] = t2 + (t3 << T(1))
+      in_col[2] = t0 - t1
+      in_col[3] = t3 - (t2 << T(1))
+
+  def inverse4x4[E,T,C](inp: View[E,T,C], out: View[E,T,C]):
+    # horizontal
+    for r in range(4):
+      in_row = inp[r,:] if N == 2 else inp[0,r,:]
+      out_row = out[r,:] if N == 2 else out[0,r,:]
+      t0 = in_row(0)
+      t1 = in_row(1)
+      t2 = in_row(2)
+      t3 = in_row(3)
+      p0 = t0 + t2
+      p1 = t0 - t2
+      p2 = (t1 >> 1) - t3
+      p3 = t1 + (t3 >> 1)
+      out_row[0] = p0 + p3
+      out_row[1] = p1 + p2
+      out_row[2] = p1 - p2
+      out_row[3] = p0 - p3
+    # vertical
+    for c in range(4):
+      in_col = out[:,c] if N == 2 else out[0,:,c]
+      t0 = in_col(0)
+      t1 = in_col(1)
+      t2 = in_col(2)
+      t3 = in_col(3)
+      p0 = t0 + t2
+      p1 = t0 - t2
+      p2 = (t1 >> 1) - t3
+      p3 = t1 + (t3 >> 1)
+      in_col[0] = p0 + p3
+      in_col[1] = p1 + p2
+      in_col[2] = p1 - p2
+      in_col[3] = p0 - p3
+ 

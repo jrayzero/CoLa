@@ -1,0 +1,52 @@
+# NOTE: the standard doesn't seem to following a consistent naming style, so I stick with snake case
+from constants import *
+
+raw = 'test_files/planar/foreman.qcif.300.420.yuv'
+input_cs = YUV_CS
+input_order = PLANAR
+h264_out = '/tmp/foreman.qcif.300.420.h264'
+frames = 300
+frame_height = 144
+frame_width = 176
+bit_depth = 8
+
+# constrained baseline = 66 + True
+profile_idc = 66
+constraint_set0_flag = False
+constraint_set1_flag = True
+constraint_set2_flag = False
+constraint_set3_flag = False
+constraint_set4_flag = False
+constraint_set5_flag = False
+
+#level_idc = ?
+chroma_format = SAMPLE_420
+# 4:2:0 => chroma_format_idc = 1, separate_colour_plane_flag = False
+#chroma_format_idc = 1
+#separate_colour_plane_flag = False # 0<->False, 1<->True
+chroma_array_type = -1
+if chroma_format == SAMPLE_MONO or chroma_format == SAMPLE_444_MONO:
+  chroma_array_type = 0 
+elif chroma_format == SAMPLE_420: 
+  chroma_array_type = 1
+elif chroma_format == SAMPLE_422:
+  chroma_array_type = 2
+elif chroma_format == SAMPLE_444:
+  chroma_array_type = 3
+else:
+  assert False
+  
+frame_is_slice = True # If true, each frame is exactly one slice
+GOP = [I_SLICE]
+decode_order = [0] # how to order the GOP indices when transmitting
+max_DPB_sz = 5
+
+def compute_chroma_frame_dims() -> Tuple[int,int]:
+  if chroma_format == SAMPLE_MONO:
+    return 0,0
+  elif chroma_format == SAMPLE_420:
+    return frame_height//2,frame_width//2
+  elif chroma_format == SAMPLE_422:
+    return frame_height,frame_width//2
+  else:
+    return frame_height,frame_width

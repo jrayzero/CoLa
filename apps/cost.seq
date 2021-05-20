@@ -1,0 +1,46 @@
+from ..cola.frontend.block import *
+from ..cola.frontend.scan import scan
+from transforms import Hadamard
+
+# https://www.intechopen.com/books/multimedia/bit-rate-estimation-for-cost-function-of-h-264-avc
+# https://link.springer.com/content/pdf/10.1007/s11760-011-0267-z.pdf
+
+class Cost:
+
+  def sad(reference: int, estimate: int) -> int:
+    return abs(reference-estimate)
+
+  def sad(reference, estimate) -> int:
+    cost = 0
+    for r,p in scan(reference, estimate):
+      cost += abs(r() - p())
+    return cost
+
+  def ssd(reference: int, estimate: int) -> int:
+    return (reference-estimate) ** 2
+
+  def ssd(reference, estimate) -> int:
+    cost = 0
+    for r,p in scan(reference, estimate):
+      cost += (r() - p()) ** 2
+    return cost
+
+  def satd(reference, estimate) -> int:
+    cost = 0
+    for h in scan(Hadamard.hadamard(reference, estimate)):
+      cost += abs(h())
+    return cost
+  
+  def lambda_Sullivan_Wiegand(QP: int):
+    return 0.85 * 2 ** ((QP-12)//3)
+
+  def rate_distortion_ssd(reference, estimate, lambda_val: int, R: int) -> int:
+    return Cost.ssd(reference, estimate) + lambda_val * R
+
+  # P = 0 for most probable mode
+  def rate_distortion_sad(reference, estimate, lambda_val: int, P: bool) -> int:
+    return Cost.sad(reference, estimate) + lambda_val * int(P)
+
+  # P = 0 for most probable mode
+  def rate_distortion_satd(reference, estimate, lambda_val: int, P: bool) -> int:
+    return Cost.satd(reference, estimate) + lambda_val * int(P)
