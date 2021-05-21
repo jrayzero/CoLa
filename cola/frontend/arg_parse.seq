@@ -1,11 +1,19 @@
 import sys
 
-# TODO booleans
-
 ARG_INVALID = -1
 ARG_INT = 0
 ARG_FLOAT = 1
 ARG_STR = 2
+ARG_BOOL = 3
+
+def str_to_bool(s: str):
+  l = s.lower()
+  if l == 'false':
+    return False
+  elif l == 'true':
+    return True
+  else:
+    raise ValueError()
 
 class ArgError:
     _hdr: ExcHeader
@@ -29,6 +37,7 @@ class ParsedArg:
   int_val: Optional[int]
   float_val: Optional[float]
   str_val: Optional[str]
+  bool_val: Optional[bool]
 
   def __init__(self, val: int):
     self.int_val = val
@@ -39,6 +48,9 @@ class ParsedArg:
   def __init__(self, val: str):
     self.str_val = val
 
+  def __init__(self, val: bool):
+    self.bool_val = val
+
   def to_int(self):
     return ~self.int_val
 
@@ -48,13 +60,18 @@ class ParsedArg:
   def to_str(self):
     return ~self.str_val
 
+  def to_bool(self):
+    return ~self.bool_val
+
   def __str__(self):
     if self.int_val:
       return str(~self.int_val)
     elif self.float_val:
       return str(~self.float_val)
-    else:
+    elif self.bool_val:
       return ~self.str_val
+    else:
+      return str(~self.bool_val)
               
 @dataclass(init=False)
 class ArgOpt:
@@ -78,12 +95,15 @@ class ArgOpt:
   float_val_lower: Optional[float]
   float_val_upper: Optional[float]
   str_val: Optional[str]
+  bool_val: Optional[bool]
+  both_bools_allowed: bool
   filled: bool
 
   def __init__(self):
     self.filled = False
     self.use_int_bound = False
     self.use_float_bound = False
+    self.both_bools_allowed = False
     self.arg_type = ARG_INVALID
 
   def __str__(self):
@@ -115,6 +135,11 @@ class ArgOpt:
         return str(~self.float_val)
     elif self.arg_type == ARG_STR:
       return ~self.str_val
+    elif self.arg_type == ARG_BOOL:
+      if self.both_bools_allowed:
+        return '[True,False]'
+      else:
+        return str(~self.bool_val)
     else:
       return ""
 
@@ -139,6 +164,13 @@ class ArgOpt:
     self.filled = True
     return self
 
+  def set(self, val: bool):
+    assert not self.filled
+    self.bool_val = val
+    self.arg_type = ARG_BOOL
+    self.filled = True
+    return self
+
   def set_int_bound(self, lower: Optional[int], upper: Optional[int]):
     assert not self.filled
     self.int_val_lower = lower
@@ -154,6 +186,13 @@ class ArgOpt:
     self.float_val_upper = upper
     self.use_float_bound = True
     self.arg_type = ARG_FLOAT
+    self.filled = True
+    return self
+
+  def set_both_bools(self):
+    assert not self.filled
+    self.both_bools_allowed = True
+    self.arg_type = ARG_BOOL
     self.filled = True
     return self
 
@@ -174,7 +213,7 @@ class ArgOpt:
             return (True,ParsedArg(i))
         else:
           return (i == self.int_val,ParsedArg(i))
-      except:
+      except ValueError:
         return (False, ParsedArg())
     elif self.arg_type == ARG_FLOAT:
       try:
@@ -191,10 +230,19 @@ class ArgOpt:
             return (True,ParsedArg(f))
         else:
           return (f == ~self.float_val,ParsedArg(f))
-      except:
+      except ValueError:
         return (False,ParsedArg())
     elif self.arg_type == ARG_STR:
       return (~self.str_val == arg, ParsedArg(arg))
+    elif self.arg_type == ARG_BOOL:
+      try:
+        b = str_to_bool(arg)
+        if self.both_bools_allowed:
+          return (True, ParsedArg(b))
+        else:
+          return (~self.bool_val == b, ParsedArg(b))
+      except ValueError:
+        return (False,ParsedArg())
     else:
       # arg is invalid
       return (False,ParsedArg())
@@ -237,6 +285,10 @@ class ArgParse:
         self.arg_debug[name] = debug_info
 
   def parse(self, args):
+    """
+    If an arg can be boolean and it doesn't have a value associated with it,
+    it is given a value of True
+    """
     idx = 0
     while True:
       if idx == len(args):
@@ -252,12 +304,37 @@ class ArgParse:
       if arg_name in self.parsed:
         raise ArgError('Already have value for arg ' + arg_name)
       opts = self.arg_opts[arg_name] 
-      # check if there is a next value 
-      # TODO if no next value, it may be a boolean! (do a precheck if its boolean)
-      if idx + 1 == len(args):
-        raise ArgError(arg_name + ' has no value specified!')
-      idx = idx + 1
-      value = args[idx]
+      # check if there is a next value if we are at the end of the arguments.
+      value = ''
+      if idx + 1 == len(args):        
+        # check if this arg can be a boolean. If so, it doesn't need a value (defaults to True)
+        is_bool = False
+        for opt in opts:
+          if opt.bool_val or opt.both_bools_allowed:
+            value = 'True'
+            is_bool = True
+            break
+        if not is_bool:
+          raise ArgError(arg_name + ' has no value specified! Possible values: ' + ','.join([str(o) for o in opts]))
+      else:
+        # There is (possibly) a value. If the current arg is allowed to be a boolean, it doesn't necessarily need a value
+        # meaning the next things is actually another argument, not a value.
+        is_bool = False
+        for opt in opts:
+          if opt.bool_val or opt.both_bools_allowed:
+            is_bool = True
+            break  
+        # first, parse as if it were a value
+        idx = idx + 1
+        value = args[idx]
+        if is_bool:
+          # see if the next thing is a True or False, making it a bool value
+          try:
+            b = str_to_bool(value)
+          except ValueError:
+            # okay, the next thing was another arg, stick it back
+            idx = idx - 1
+            value = 'True' # default for boolean args without values
       # figure out if this matches any of the options. Take the first match (or fail if no match)
       found_match = False
       for opt in opts:
@@ -284,13 +361,16 @@ def debug():
   opt0 = ArgOpt()
   opt1 = ArgOpt()
   opt2 = ArgOpt()
+  opt3 = ArgOpt()
   
   parser.register_arg('myarg0', opt0.set(11), 'does foo')
   parser.register_arg('myarg0', opt1.set(93))
   parser.register_arg('myarg1', opt2.set_float_bound(45.0,90.0), 'something floating point like')
+  parser.register_arg('myarg2', opt3.set_both_bools(), 'something boolish')
   print(parser.usage())
 
-  args = ['-myarg1', '49.3', '-myarg0', '93']
+  args = ['-myarg1', '49.3', '-myarg0', '93', '-myarg2', 'False']
   parser.parse(args)
   print(parser['myarg1'].to_float())
-#debug()
+  print(parser['myarg2'].to_bool())
+debug()
