@@ -4,9 +4,6 @@ from basic_io import *
 from partition import *
 from config import *
 from constants import *
-from validate_config import do_validate
-
-do_validate() 
 
 ifd = open(raw, 'rb')
 ofd = open(h264_out, 'wb')
@@ -20,7 +17,6 @@ for f in range(frames):
   # read a frame
   if input_cs == YUV_CS:
     if chroma_format == SAMPLE_MONO:
-      # no notion of planar vs interleave
       YUV.read_frame_mono(frame_height, frame_width, luma_frame, ifd, bit_depth)      
     elif input_order == PLANAR:
       if chroma_format == SAMPLE_420:

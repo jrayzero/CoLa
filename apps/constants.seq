@@ -37,6 +37,7 @@ SAMPLE_444 = 3
 SAMPLE_444_MONO = 4 # this is for processing each separate color plane as monochrome 
 
 # colorspaces
+INFER_CS = -1
 YUV_CS = 0
 
 # colorspace ordering

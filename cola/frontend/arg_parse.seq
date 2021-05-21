@@ -232,6 +232,36 @@ class ArgOpt:
     self.filled = True
     return self
 
+  def set(val: int):
+    return ArgOpt().set(val)
+
+  def set(val: float):
+    return ArgOpt().set(val)
+
+  def set(val: str):
+    return ArgOpt().set(val)
+
+  def set(val: bool):
+    return ArgOpt().set(val)
+
+  def set_int_bound(lower: Optional[int], upper: Optional[int]):
+    return ArgOpt().set_int_bound(lower, upper)
+
+  def set_float_bound(lower: Optional[float], upper: Optional[float]):
+    return ArgOpt().set_float_bound(lower, upper)
+
+  def set_any_bool():
+    return ArgOpt().set_any_bool()
+
+  def set_any_str():
+    return ArgOpt().set_any_str()
+
+  def create_options(*opts):
+    """
+    Some shorthand for creating a bunch of ArgOpts representing non-bound values (i.e. straight ints, floats, strs, or bools)
+    """
+    return tuple(ArgOpt.set(opt) for opt in opts)
+
   # see if this option covers this input, and it so, return the ParsedArg (it returns as a ParsedArg regardless, so check the bool)
   def try_opt(self, arg: str) -> Tuple[bool,ParsedArg]:
     if self.arg_type == ARG_INT:
@@ -321,7 +351,7 @@ class ArgParse:
     self.parsed = {}
     self.arg_defaults = {}
 
-  def register[T](self, name, opt: ArgOpt, default_val: Optional[T] = None, debug_info: str = ''):
+  def register[T](self, name, opt: ArgOpt, default_val: T, debug_info: str = ''):
     if name not in self.arg_opts:
       self.arg_opts[name] = []
     self.arg_opts[name].append(opt)
@@ -330,8 +360,40 @@ class ArgParse:
     else:
       if debug_info != '':
         self.arg_debug[name] = debug_info
-    if default_val:
+    self.arg_defaults[name] = ParsedArg(~default_val)
+
+  def register[T](self, name, opts, default_val: T, debug_info: str = ''):
+    for opt in opts:
+      if name not in self.arg_opts:
+        self.arg_opts[name] = []
+      self.arg_opts[name].append(opt)
+      if name not in self.arg_debug:
+        self.arg_debug[name] = debug_info
+      else:
+        if debug_info != '':
+          self.arg_debug[name] = debug_info
       self.arg_defaults[name] = ParsedArg(~default_val)
+
+  def register(self, name, opt: ArgOpt, debug_info: str = ''):
+    if name not in self.arg_opts:
+      self.arg_opts[name] = []
+    self.arg_opts[name].append(opt)
+    if name not in self.arg_debug:
+      self.arg_debug[name] = debug_info
+    else:
+      if debug_info != '':
+        self.arg_debug[name] = debug_info
+
+  def register(self, name, opts, debug_info: str = ''):
+    for opt in opts:
+      if name not in self.arg_opts:
+        self.arg_opts[name] = []
+      self.arg_opts[name].append(opt)
+      if name not in self.arg_debug:
+        self.arg_debug[name] = debug_info
+      else:
+        if debug_info != '':
+          self.arg_debug[name] = debug_info
 
   def parse(self, args):
     """
@@ -412,6 +474,23 @@ class ArgParse:
       return self.arg_defaults[arg_name]
     else:
       raise ArgError('Cannot find parsed arg ' + arg_name)
+
+  def select(self, name, val):
+    """
+    Return val if no arg is specified in self.parsed_args. Otherwise
+    return the value in self.parsed_args
+    """
+    if name in self.parsed:
+      if isinstance(val, int):
+        return self.parsed[name].to_int()
+      elif isinstance(val, float):
+        return self.parsed[name].to_float()        
+      elif isinstance(val, str):
+        return self.parsed[name].to_str()      
+      else:
+        return self.parsed[name].to_bool()        
+    else:
+      return val
 
 def debug():
   parser = ArgParse()
