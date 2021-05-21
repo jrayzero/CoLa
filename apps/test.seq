@@ -1,0 +1,15 @@
+from ..cola.frontend.arg_parse import *
+import basic_io
+import sys
+
+parser = ArgParse()
+parser.register('prefix_path', ArgOpt().set_any_str(), '', 'Path to prepend on to any relative paths used for data access.')
+parser.register('no_basic_io', ArgOpt().set_any_bool(), False, 'If true, do no test basic_io.seq')
+parser.parse(sys.argv[1:])
+
+prefix_path = parser['prefix_path'].to_str()
+if prefix_path != '':
+  prefix_path += '/'
+
+if not parser['no_basic_io']:  
+  basic_io.do_test(prefix_path)

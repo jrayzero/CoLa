@@ -126,10 +126,11 @@ class YUV:
     U_frame.write(fd, bit_depth // 8, total_elems_Y)
     V_frame.write(fd, bit_depth // 8, total_elems_Y)
     
-def debug():
-  raw_420 = open('test_files/planar/foreman.qcif.3.420.yuv', 'rb')
-  raw_422 = open('test_files/planar/foreman.qcif.3.422.yuv', 'rb')
-  raw_444 = open('test_files/planar/foreman.qcif.3.444.yuv', 'rb')
+def do_test(prefix_path: str):
+  print('testing basic_io.seq')
+  raw_420 = open(prefix_path + 'test_files/planar/foreman.qcif.3.420.yuv', 'rb')
+  raw_422 = open(prefix_path + 'test_files/planar/foreman.qcif.3.422.yuv', 'rb')
+  raw_444 = open(prefix_path + 'test_files/planar/foreman.qcif.3.444.yuv', 'rb')
   
   raw_420_out = open('/tmp/foreman.qcif.3.420.yuv', 'wb')
   raw_422_out = open('/tmp/foreman.qcif.3.422.yuv', 'wb')
@@ -160,4 +161,44 @@ def debug():
   raw_422_out.close()
   raw_444_out.close()  
 
-debug()
+  # check that the files are equal
+  raw_420 = open(prefix_path + 'test_files/planar/foreman.qcif.3.420.yuv', 'rb')
+  raw_422 = open(prefix_path + 'test_files/planar/foreman.qcif.3.422.yuv', 'rb')
+  raw_444 = open(prefix_path + 'test_files/planar/foreman.qcif.3.444.yuv', 'rb')
+  
+  raw_420_out = open('/tmp/foreman.qcif.3.420.yuv', 'rb')
+  raw_422_out = open('/tmp/foreman.qcif.3.422.yuv', 'rb')
+  raw_444_out = open('/tmp/foreman.qcif.3.444.yuv', 'rb')
+
+  @test
+  def t0():
+    same = True
+    for a,b in zip(raw_420,raw_420_out):
+      if a != b:
+        same = False
+        break
+    assert same
+
+  @test
+  def t1():
+    same = True
+    for a,b in zip(raw_422,raw_422_out):
+      if a != b:
+        same = False
+        break
+    assert same
+
+  @test
+  def t2():
+    same = True
+    for a,b in zip(raw_444,raw_444_out):
+      if a != b:
+        same = False
+        break
+    assert same
+
+  t0()
+  t1()
+  t2()
+  
+      

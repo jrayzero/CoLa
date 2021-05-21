@@ -28,6 +28,7 @@ class ArgError:
     def message(self):
         return self._hdr.msg
 
+@dataclass(init=False)
 class ParsedArg:
   
   """
@@ -39,16 +40,29 @@ class ParsedArg:
   str_val: Optional[str]
   bool_val: Optional[bool]
 
+  def _common(self):
+    self.int_val = None
+    self.float_val = None
+    self.str_val = None
+    self.bool_val = None
+
+  def __init__(self):
+    self._common()
+
   def __init__(self, val: int):
+    self._common()
     self.int_val = val
 
   def __init__(self, val: float):
+    self._common()
     self.float_val = val
 
   def __init__(self, val: str):
+    self._common()
     self.str_val = val
 
   def __init__(self, val: bool):
+    self._common()
     self.bool_val = val
 
   def to_int(self):
@@ -63,15 +77,18 @@ class ParsedArg:
   def to_bool(self):
     return ~self.bool_val
 
+  def __bool__(self):
+    return ~self.bool_val
+
   def __str__(self):
     if self.int_val:
       return str(~self.int_val)
     elif self.float_val:
       return str(~self.float_val)
     elif self.bool_val:
-      return ~self.str_val
-    else:
       return str(~self.bool_val)
+    else:
+      return str(~self.str_val)
               
 @dataclass(init=False)
 class ArgOpt:
@@ -95,6 +112,7 @@ class ArgOpt:
   float_val_lower: Optional[float]
   float_val_upper: Optional[float]
   str_val: Optional[str]
+  any_str_allowed: bool
   bool_val: Optional[bool]
   both_bools_allowed: bool
   filled: bool
@@ -104,7 +122,15 @@ class ArgOpt:
     self.use_int_bound = False
     self.use_float_bound = False
     self.both_bools_allowed = False
+    self.any_str_allowed = False
     self.arg_type = ARG_INVALID
+    self.int_val = None 
+    self.int_val_lower = None
+    self.int_val_upper = None
+    self.float_val_lower = None
+    self.float_val_upper = None
+    self.str_val = None
+    self.bool_val = None
 
   def __str__(self):
     if self.arg_type == ARG_INT:
@@ -134,7 +160,10 @@ class ArgOpt:
       else:
         return str(~self.float_val)
     elif self.arg_type == ARG_STR:
-      return ~self.str_val
+      if self.any_str_allowed:
+        return '[ANY_STR]'
+      else:
+        return ~self.str_val
     elif self.arg_type == ARG_BOOL:
       if self.both_bools_allowed:
         return '[True,False]'
@@ -189,10 +218,17 @@ class ArgOpt:
     self.filled = True
     return self
 
-  def set_both_bools(self):
+  def set_any_bool(self):
     assert not self.filled
     self.both_bools_allowed = True
     self.arg_type = ARG_BOOL
+    self.filled = True
+    return self
+
+  def set_any_str(self):
+    assert not self.filled
+    self.any_str_allowed = True
+    self.arg_type = ARG_STR
     self.filled = True
     return self
 
@@ -233,7 +269,10 @@ class ArgOpt:
       except ValueError:
         return (False,ParsedArg())
     elif self.arg_type == ARG_STR:
-      return (~self.str_val == arg, ParsedArg(arg))
+      if self.any_str_allowed:
+        return (True, ParsedArg(arg))
+      else:
+        return (~self.str_val == arg, ParsedArg(arg))
     elif self.arg_type == ARG_BOOL:
       try:
         b = str_to_bool(arg)
@@ -259,10 +298,17 @@ class ArgParse:
   Name of the arg and its possible values
   """
   arg_opts: Dict[str, list[ArgOpt]]
+
   """
   Debug info for each arg (such as what it does)
   """
   arg_debug: Dict[str, str]
+
+  """
+  Default values to use if no values specified. Not checked for validity in terms of 
+  range used.
+  """
+  arg_defaults: Dict[str, ParsedArg]
   
   """
   The args parsed from the command line.  
@@ -273,8 +319,9 @@ class ArgParse:
     self.arg_opts = {}
     self.arg_debug = {}
     self.parsed = {}
+    self.arg_defaults = {}
 
-  def register_arg(self, name, opt: ArgOpt, debug_info: str = ''):
+  def register[T](self, name, opt: ArgOpt, default_val: Optional[T] = None, debug_info: str = ''):
     if name not in self.arg_opts:
       self.arg_opts[name] = []
     self.arg_opts[name].append(opt)
@@ -283,6 +330,8 @@ class ArgParse:
     else:
       if debug_info != '':
         self.arg_debug[name] = debug_info
+    if default_val:
+      self.arg_defaults[name] = ParsedArg(~default_val)
 
   def parse(self, args):
     """
@@ -352,9 +401,17 @@ class ArgParse:
     for _opt,_debug in zip(self.arg_opts, self.arg_debug):      
       s += '-' + _opt + ': ' + self.arg_debug[_debug] + '. Possible values: ' + ','.join([str(o) for o in self.arg_opts[_opt]]) + '\n'
     return s
+
+  def __str__(self) -> str:
+    return self.usage()
         
   def __getitem__(self, arg_name: str):
-    return self.parsed[arg_name]
+    if arg_name in self.parsed:
+      return self.parsed[arg_name]
+    elif arg_name in self.arg_defaults:
+      return self.arg_defaults[arg_name]
+    else:
+      raise ArgError('Cannot find parsed arg ' + arg_name)
 
 def debug():
   parser = ArgParse()
@@ -363,14 +420,14 @@ def debug():
   opt2 = ArgOpt()
   opt3 = ArgOpt()
   
-  parser.register_arg('myarg0', opt0.set(11), 'does foo')
-  parser.register_arg('myarg0', opt1.set(93))
-  parser.register_arg('myarg1', opt2.set_float_bound(45.0,90.0), 'something floating point like')
-  parser.register_arg('myarg2', opt3.set_both_bools(), 'something boolish')
+  parser.register('myarg0', opt0.set(11))
+  parser.register('myarg0', opt1.set(93))
+  parser.register('myarg1', opt2.set_float_bound(45.0,90.0))
+  parser.register('myarg2', opt3.set_any_bool())
   print(parser.usage())
 
   args = ['-myarg1', '49.3', '-myarg0', '93', '-myarg2', 'False']
   parser.parse(args)
   print(parser['myarg1'].to_float())
   print(parser['myarg2'].to_bool())
-debug()
+

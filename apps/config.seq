@@ -1,7 +1,8 @@
 # NOTE: the standard doesn't seem to following a consistent naming style, so I stick with snake case
 from constants import *
 
-raw = 'test_files/planar/foreman.qcif.300.420.yuv'
+COLA_TOP = '/Users/jray/ColaProjects/CoLa/'
+raw = '/Users/jray/ColaProjects/CoLa/apps/test_files/planar/foreman.qcif.300.420.yuv'
 input_cs = YUV_CS
 input_order = PLANAR
 h264_out = '/tmp/foreman.qcif.300.420.h264'
