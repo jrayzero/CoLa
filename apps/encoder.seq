@@ -1,5 +1,7 @@
 from ..cola.frontend.block import *
 from ..cola.frontend.error import *
+from ..cola.frontend.scan import *
+
 from basic_io import *
 from partition import *
 from config import *
@@ -9,7 +11,7 @@ ifd = open(raw, 'rb')
 ofd = open(h264_out, 'wb')
 
 chroma_height,chroma_width = compute_chroma_frame_dims()
-luma_frame = Block.make[byte](frame_height, frame_width)
+Y_frame = Block.make[byte](frame_height, frame_width)
 Cb_frame = Block.make[byte](chroma_height, chroma_width) if chroma_format != SAMPLE_MONO else None
 Cr_frame = Block.make[byte](chroma_height, chroma_width) if chroma_format != SAMPLE_MONO else None
 
@@ -17,30 +19,41 @@ for f in range(frames):
   # read a frame
   if input_cs == YUV_CS:
     if chroma_format == SAMPLE_MONO:
-      YUV.read_frame_mono(frame_height, frame_width, luma_frame, ifd, bit_depth)      
+      YUV.read_frame_mono(frame_height, frame_width, Y_frame, ifd, bit_depth)      
     elif input_order == PLANAR:
       if chroma_format == SAMPLE_420:
-        YUV.read_frame_420_planar(frame_height, frame_width, luma_frame, ~Cb_frame, ~Cr_frame, ifd, bit_depth)
+        YUV.read_frame_420_planar(frame_height, frame_width, Y_frame, ~Cb_frame, ~Cr_frame, ifd, bit_depth)
       elif chroma_format == SAMPLE_422:
-        YUV.read_frame_422_planar(frame_height, frame_width, luma_frame, ~Cb_frame, ~Cr_frame, ifd, bit_depth)
+        YUV.read_frame_422_planar(frame_height, frame_width, Y_frame, ~Cb_frame, ~Cr_frame, ifd, bit_depth)
       else: 
-        YUV.read_frame_444_planar(frame_height, frame_width, luma_frame, ~Cb_frame, ~Cr_frame, ifd, bit_depth)
+        YUV.read_frame_444_planar(frame_height, frame_width, Y_frame, ~Cb_frame, ~Cr_frame, ifd, bit_depth)
   # macroblock partition
-  Y_mbs = Partition.grid(luma_frame, 16)[0]
-  U_mbs = None
-  V_mbs = None
+  # even though YCbCr isn't necessarily the space we are in, I just called things that to make life easier
+  Y_mbs = Partition.grid(Y_frame, 16)[0]
   if chroma_format != SAMPLE_MONO:
+    _Cb_mbs = None
+    _Cr_mbs = None
     if chroma_format == SAMPLE_420:
-      U_mbs = Partition.grid(Cb_frame, 8)[0]
-      V_mbs = Partition.grid(Cr_frame, 8)[0]
+      _Cb_mbs = Partition.grid(Cb_frame, 8)[0]
+      _Cr_mbs = Partition.grid(Cr_frame, 8)[0]
     elif chroma_format == SAMPLE_422:
-      U_mbs = Partition.grid(Cb_frame, 16, 8)[0]
-      V_mbs = Partition.grid(Cr_frame, 16, 8)[0]
+      _Cb_mbs = Partition.grid(Cb_frame, 16, 8)[0]
+      _Cr_mbs = Partition.grid(Cr_frame, 16, 8)[0]
     else:
-      U_mbs = Partition.grid(Cb_frame, 16)[0]
-      V_mbs = Partition.grid(Cr_frame, 16)[0]             
-  
-
+      _Cb_mbs = Partition.grid(Cb_frame, 16)[0]
+      _Cr_mbs = Partition.grid(Cr_frame, 16)[0]             
+    Cb_mbs = ~_Cb_mbs
+    Cr_mbs = ~_Cr_mbs
+    for Y_mb,Cb_mb,Cr_mb in scan(Y_mbs, Cb_mbs, Cr_mbs):
+      # TODO left off here. Start doing the intra prediction
+      print(Y_mb)
+      print(Cb_mb)
+      print(Cr_mb)
+      exit(49)
+  else:
+    raise NotImplementedError()
+    for Y_mb in scan(Y_mbs):
+      pass
 
 ifd.close()
 ofd.flush()

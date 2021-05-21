@@ -1,24 +1,62 @@
 from block import Block,View
 from ptree import PTree,AndPTree
-from traversal import Traversal
+from traversal import Traversal,AppliedTraversal
 
-def _scan(item, *items):
-  if staticlen(items) == 0:
-    if isinstance(item, View) or isinstance(item, Block):
+class ScanUtils:
+
+  def _scan[E,T,C](item: View[E,T,C], *items):
+    if staticlen(items) == 0:
       return (iter(item.base),)
-    elif isinstance(item, AppliedTraversal) or isinstance(item, PTree) or \
-         isinstance(item, AndPTree):
+    else:
+      return (iter(item.base),) + ScanUtils._scan(*items)
+
+  def _scan[E,T,C](item: Block[E,T,C], *items):
+    if staticlen(items) == 0:
+      return (iter(item.base),)
+    else:
+      return (iter(item.base),) + ScanUtils._scan(*items)
+
+  def _scan[E,T,C](item: PTree[E,T,C], *items):
+    if staticlen(items) == 0:
       return (item.do_iter(),)
     else:
-      return (iter(item),)
-  else:
-    if isinstance(item, View) or isinstance(item, Block):
-      return (iter(item.base),) + _scan(*items)
-    elif isinstance(item, AppliedTraversal) or isinstance(item, PTree) or \
-         isinstance(item, AndPTree):
-      return (item.do_iter(),) + _scan(*items)
+      return (item.do_iter(),) + ScanUtils._scan(*items)
+
+  def _scan[E,T,C](item: AndPTree[E,T,C], *items):
+    if staticlen(items) == 0:
+      return (item.do_iter(),)
     else:
-      return (iter(item),) + _scan(*items)
+      return (item.do_iter(),) + ScanUtils._scan(*items)
+
+  def _scan[E,T,C](item: AppliedTraversal[E,T,C], *items):
+    if staticlen(items) == 0:
+      return (item.do_iter(),)
+    else:
+      return (item.do_iter(),) + ScanUtils._scan(*items)
+
+  def _scan(item, *items):
+    if staticlen(items) == 0:
+      return (iter(item),)
+    else:
+      return (iter(item),) + ScanUtils._scan(*items)
+
+  def _scan1[E,T,C](item: View[E,T,C]):
+    return iter(item.base)
+
+  def _scan1[E,T,C](item: Block[E,T,C]):
+    return iter(item.base)
+
+  def _scan1[E,T,C](item: PTree[E,T,C]):
+    return item.do_iter()
+
+  def _scan1[E,T,C](item: AndPTree[E,T,C]):
+    return item.do_iter()
+
+  def _scan1[E,T,C](item: AppliedTraversal[E,T,C]):
+    return item.do_iter()
+
+  def _scan1(item):
+    return iter(item)
 
 # users should utilize scan for iteration on blocks and views. Multidim just uses __iter__, but users
 # shouldn't have to touch that part.
@@ -26,24 +64,16 @@ def _scan(item, *items):
 def scan(item, *items):
   # have this separate condition so I don't return a tuple for a single item (which happens with _scan)
   if staticlen(items) == 0:
-    if isinstance(item, View) or isinstance(item, Block):
-      for i in item.base:
-        yield i
-    elif isinstance(item, AppliedTraversal) or isinstance(item, PTree) or \
-         isinstance(item, AndPTree):
-      for i in item.do_iter():
-        yield i
-    else:
-      for i in item:
-        yield i
+    for i in ScanUtils._scan1(item):
+      yield i
   else:
-    iters = _scan(item, *items)
+    iters = ScanUtils._scan(item, *items)
     done = False
     while not done:
       for i in iters:
         if i.done():
           done = True
       if not done:
-        yield tuple(View(i.next()) for i in iters)
+        yield tuple(i.next() for i in iters)
     for i in iters:
       i.destroy()
