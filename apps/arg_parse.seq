@@ -1,0 +1,296 @@
+import sys
+
+# TODO booleans
+
+ARG_INVALID = -1
+ARG_INT = 0
+ARG_FLOAT = 1
+ARG_STR = 2
+
+class ArgError:
+    _hdr: ExcHeader
+
+    def __init__(self):
+        self._hdr = ('ArgError', '', '', '', 0, 0)
+
+    def __init__(self, message: str):
+        self._hdr = ('ArgError', message, '', '', 0, 0)
+
+    @property
+    def message(self):
+        return self._hdr.msg
+
+class ParsedArg:
+  
+  """
+  Represent a (valid) argument parsed from the command line.
+  """
+
+  int_val: Optional[int]
+  float_val: Optional[float]
+  str_val: Optional[str]
+
+  def __init__(self, val: int):
+    self.int_val = val
+
+  def __init__(self, val: float):
+    self.float_val = val
+
+  def __init__(self, val: str):
+    self.str_val = val
+
+  def to_int(self):
+    return ~self.int_val
+
+  def to_float(self):
+    return ~self.float_val
+
+  def to_str(self):
+    return ~self.str_val
+
+  def __str__(self):
+    if self.int_val:
+      return str(~self.int_val)
+    elif self.float_val:
+      return str(~self.float_val)
+    else:
+      return ~self.str_val
+              
+@dataclass(init=False)
+class ArgOpt:
+
+  """
+  Represents a possible value for an argument. It can be an int, float, or str,
+  and for int/float, an inclusive lower and upper bound can be used instead.
+  """
+
+  arg_type: int
+  # Only one of these should be filled in (or 2 is possible in the case of using lower and upper).  
+
+  int_val: Optional[int]
+  # If use_int_bound = True and either lower or upper is None, that means unbounded
+  use_int_bound: bool
+  int_val_lower: Optional[int]
+  int_val_upper: Optional[int]
+  float_val: Optional[float]
+  # If use_float_bound = True and either lower or upper is None, that means unbounded
+  use_float_bound: bool
+  float_val_lower: Optional[float]
+  float_val_upper: Optional[float]
+  str_val: Optional[str]
+  filled: bool
+
+  def __init__(self):
+    self.filled = False
+    self.use_int_bound = False
+    self.use_float_bound = False
+    self.arg_type = ARG_INVALID
+
+  def __str__(self):
+    if self.arg_type == ARG_INT:
+      if self.use_int_bound:
+        if self.int_val_lower and self.int_val_upper:
+          return '[' + str(~self.int_val_lower) + ',' + str(~self.int_val_upper) + ']'
+        elif self.int_val_lower:
+          return '[' + str(~self.int_val_lower) + ',INF]'
+        elif self.int_val_upper:
+          return '[INF,' + str(~self.int_val_upper) + ']'
+        else:
+          # unbounded
+          return '[INF,INF]'
+      else:
+        return str(~self.int_val)
+    elif self.arg_type == ARG_FLOAT:
+      if self.use_float_bound:
+        if self.float_val_lower and self.float_val_upper:
+          return '[' + str(~self.float_val_lower) + ',' + str(~self.float_val_upper) + ']'
+        elif self.float_val_lower:
+          return '[' + str(~self.float_val_lower) + ',INF]'
+        elif self.float_val_upper:
+          return '[INF,' + str(~self.float_val_upper) + ']'
+        else:
+          # unbounded
+          return '[INF,INF]'
+      else:
+        return str(~self.float_val)
+    elif self.arg_type == ARG_STR:
+      return ~self.str_val
+    else:
+      return ""
+
+  def set(self, val: int):
+    assert not self.filled
+    self.int_val = val
+    self.arg_type = ARG_INT
+    self.filled = True
+    return self
+
+  def set(self, val: float):
+    assert not self.filled
+    self.float_val = val
+    self.arg_type = ARG_FLOAT
+    self.filled = True
+    return self
+
+  def set(self, val: str):
+    assert not self.filled
+    self.str_val = val
+    self.arg_type = ARG_STR
+    self.filled = True
+    return self
+
+  def set_int_bound(self, lower: Optional[int], upper: Optional[int]):
+    assert not self.filled
+    self.int_val_lower = lower
+    self.int_val_upper = upper
+    self.arg_type = ARG_INT
+    self.use_int_bound = True
+    self.filled = True
+    return self
+
+  def set_float_bound(self, lower: Optional[float], upper: Optional[float]):
+    assert not self.filled
+    self.float_val_lower = lower
+    self.float_val_upper = upper
+    self.use_float_bound = True
+    self.arg_type = ARG_FLOAT
+    self.filled = True
+    return self
+
+  # see if this option covers this input, and it so, return the ParsedArg (it returns as a ParsedArg regardless, so check the bool)
+  def try_opt(self, arg: str) -> Tuple[bool,ParsedArg]:
+    if self.arg_type == ARG_INT:
+      try:
+        i = int(arg)
+        if self.use_int_bound:
+          if self.int_val_lower and self.int_val_upper:
+            return (i >= ~self.int_val_lower and i <= ~self.int_val_upper,ParsedArg(i))
+          elif self.int_val_lower:
+            return (i >= ~self.int_val_lower,ParsedArg(i))
+          elif self.int_val_upper:
+            return (i <= ~self.int_val_upper,ParsedArg(i))
+          else:
+            # unbounded
+            return (True,ParsedArg(i))
+        else:
+          return (i == self.int_val,ParsedArg(i))
+      except:
+        return (False, ParsedArg())
+    elif self.arg_type == ARG_FLOAT:
+      try:
+        f = float(arg)
+        if self.use_float_bound:
+          if self.float_val_lower and self.float_val_upper:
+            return (f >= ~self.float_val_lower and f <= ~self.float_val_upper, ParsedArg(f))
+          elif self.float_val_lower:
+            return (f >= ~self.float_val_lower, ParsedArg(f))
+          elif self.float_val_upper:
+            return (f <= ~self.float_val_upper, ParsedArg(f))
+          else:
+            # unbounded
+            return (True,ParsedArg(f))
+        else:
+          return (f == ~self.float_val,ParsedArg(f))
+      except:
+        return (False,ParsedArg())
+    elif self.arg_type == ARG_STR:
+      return (~self.str_val == arg, ParsedArg(arg))
+    else:
+      # arg is invalid
+      return (False,ParsedArg())
+     
+@dataclass(init=False)
+class ArgParse:
+
+  """
+  Utility for parsing command-line arguments. All arguments should be formatted as '-X' where 'X' can be a single character
+  or a bunch of characters.
+  """
+  
+  """
+  Name of the arg and its possible values
+  """
+  arg_opts: Dict[str, list[ArgOpt]]
+  """
+  Debug info for each arg (such as what it does)
+  """
+  arg_debug: Dict[str, str]
+  
+  """
+  The args parsed from the command line.  
+  """
+  parsed: Dict[str, ParsedArg]
+
+  def __init__(self):
+    self.arg_opts = {}
+    self.arg_debug = {}
+    self.parsed = {}
+
+  def register_arg(self, name, opt: ArgOpt, debug_info: str = ''):
+    if name not in self.arg_opts:
+      self.arg_opts[name] = []
+    self.arg_opts[name].append(opt)
+    if name not in self.arg_debug:
+      self.arg_debug[name] = debug_info
+    else:
+      if debug_info != '':
+        self.arg_debug[name] = debug_info
+
+  def parse(self, args):
+    idx = 0
+    while True:
+      if idx == len(args):
+        break
+      arg = args[idx]
+      # get the arg name
+      front = arg[0]
+      if front != '-':
+        raise ArgError('Arg must begin with \'-\' (' + arg + ')')
+      arg_name = arg[1:]
+      if arg_name not in self.arg_opts:
+        raise ArgError('Argument not found (' + arg_name + ')')
+      if arg_name in self.parsed:
+        raise ArgError('Already have value for arg ' + arg_name)
+      opts = self.arg_opts[arg_name] 
+      # check if there is a next value 
+      # TODO if no next value, it may be a boolean! (do a precheck if its boolean)
+      if idx + 1 == len(args):
+        raise ArgError(arg_name + ' has no value specified!')
+      idx = idx + 1
+      value = args[idx]
+      # figure out if this matches any of the options. Take the first match (or fail if no match)
+      found_match = False
+      for opt in opts:
+        is_match,parsed_arg = opt.try_opt(value)
+        if is_match:
+          found_match = True
+          self.parsed[arg_name] = parsed_arg
+          break
+      idx = idx + 1
+      if not found_match:
+        raise ArgError('Possible values: ' + ','.join([str(o) for o in opts]) + '. Value ' + str(value) + ' was given.')
+
+  def usage(self) -> str:
+    s = 'USAGE\n'
+    for _opt,_debug in zip(self.arg_opts, self.arg_debug):      
+      s += '-' + _opt + ': ' + self.arg_debug[_debug] + '. Possible values: ' + ','.join([str(o) for o in self.arg_opts[_opt]]) + '\n'
+    return s
+        
+  def __getitem__(self, arg_name: str):
+    return self.parsed[arg_name]
+
+def debug():
+  parser = ArgParse()
+  opt0 = ArgOpt()
+  opt1 = ArgOpt()
+  opt2 = ArgOpt()
+  
+  parser.register_arg('myarg0', opt0.set(11), 'does foo')
+  parser.register_arg('myarg0', opt1.set(93))
+  parser.register_arg('myarg1', opt2.set_float_bound(45.0,90.0), 'something floating point like')
+  print(parser.usage())
+
+  args = ['-myarg1', '49.3', '-myarg0', '93']
+  parser.parse(args)
+  print(parser['myarg1'].to_float())
+debug()
