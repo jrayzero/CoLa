@@ -117,6 +117,28 @@ class Multidim[E,T,C]:
     self._is_root = False
     self._stored_relatives = {}
 
+  def __init__(self, cgrid_mapping, cgrid, dims, nunits):
+    """
+    Create a multidim owner from scratch
+    """
+    self._cgrid_mapping = cgrid_mapping
+    self._cgrid = cgrid
+    self._buffer_owner = self
+    self._dims = dims
+    self._nunits = nunits
+    self._is_owner = True
+    self._is_root = False
+    self._buffer = Array[E](self.nunits())
+    self._stored_relatives = {}    
+               
+
+  def deep_cast[E2](self) -> Multidim[E2,T,C]:
+    """
+    See Block.deep_cast
+    """
+    return Multidim[E2,T,C](self._cgrid_mapping, self._cgrid, self._dims, self._nunits)
+    
+
   def set_density(self, *mul) -> Multidim[E,T,C]:
     """
     Creates a new Multidim with mul[i] bigger size in dimension i.
@@ -724,6 +746,12 @@ class Block[E,T,C]:
 
   def __init__(self, other: Multidim[E,T,C]):
     self.base = other
+  
+  def deep_cast[E2](self) -> Block[E2,T,C]:
+    """
+    Creates a new Block with same dimensions and mappings as self, but with a different element type (E2)
+    """
+    return Block(self.base.deep_cast[E2]())
 
   def dims(self) -> T:
     return self.base.dims()
