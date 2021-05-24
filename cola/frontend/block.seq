@@ -196,6 +196,27 @@ class Multidim[E,T,C]:
     assert self._cgrid == other._cgrid
     return Multidim._do_fully_contained[C](self._cgrid_mapping, other._cgrid_mapping)
 
+  def _do_is_same_region[C](self_mapping: C, other_mapping: C) -> bool:
+    if staticlen(self_mapping) == 0:
+      return True
+    else:
+      starts_oob = self_mapping[0].start == other_mapping[0].start
+      stops_oob = self_mapping[0].stop == other_mapping[0].stop
+      strides_oob = self_mapping[0].stride == other_mapping[0].stride
+      return starts_oob and stops_oob and strides_oob and Multidim._do_is_same_region(self_mapping[1:], other_mapping[1:])
+
+  def is_same_region(self, other: Multidim[E,T,C]) -> bool:
+    """
+    Check if self covers the exact same space as the region specified by other
+    wrt their CoordGrids (which should be the same). Includes starts, stops, and strides.
+    if
+    1: self's start >= other's start 
+    2: self's stop <= other's stop
+    """
+    if self._cgrid != other._cgrid:
+      return False
+    return Multidim._do_is_same_region[C](self._cgrid_mapping, other._cgrid_mapping)
+
   def _do_fully_contained[C](self_mapping: C, other: CoordGrid[T]) -> bool:
     if staticlen(self_mapping) == 0:
       return True
@@ -203,7 +224,6 @@ class Multidim[E,T,C]:
       starts_oob = self_mapping[0].start < 0
       stops_oob = self_mapping[0].stop > other._dims[0]
       return not (starts_oob or stops_oob) and Multidim._do_fully_contained(self_mapping[1:], other[1:])
-
 
   def fully_contained(self, other: CoordGrid[T]) -> bool:
     """
@@ -718,6 +738,12 @@ class Block[E,T,C]:
     self.remap(other.base)
     return self
 
+  def is_same_region(self, other: Block[E,T,C]) -> bool:
+    return self.base.is_same_region(other.base)
+
+  def is_same_region(self, other: View[E,T,C]) -> bool:
+    return self.base.is_same_region(other.base)
+
   def origin_relative_to(self, other: Block[E,T,C]) -> T:
     return self.base.origin_relative_to(other.base)
 
@@ -837,6 +863,12 @@ class View[E,T,C]:
 
   def origin_relative_to(self, other: View[E,T,C]) -> T:
     return self.base.origin_relative_to(other.base)
+
+  def is_same_region(self, other: Block[E,T,C]) -> bool:
+    return self.base.is_same_region(other.base)
+
+  def is_same_region(self, other: View[E,T,C]) -> bool:
+    return self.base.is_same_region(other.base)
 
   def __call__(self) -> E:
     return self.base.__call__()

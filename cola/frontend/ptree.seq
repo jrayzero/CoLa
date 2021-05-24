@@ -19,7 +19,12 @@ class AndPTree[E,T,C]:
     self.children = []
 
   def add_child(self, child: AndPTree[E,T,C]):
-    self.children.append(child)
+    if self.value.is_same_region(child.value) and len(child.children) > 0:
+      # merge 
+      for c in child.children:
+        self.children.append(c)
+    else:
+      self.children.append(child)
 
   def reset_child(self, idx: int, child: AndPTree[E,T,C]):
     assert idx < len(self.children)
@@ -48,9 +53,9 @@ class AndPTree[E,T,C]:
   def _inner_str(self, indent) -> str:
     s = ''
     if len(self.children) == 0:
-      s += ' ' * indent + 'LEAF @' + str(self.value.origin()) + '\n'
+      s += ' ' * indent + 'LEAF ' + str(self.value.dims()) + '@' + str(self.value.origin()) + '\n'
     else:
-      s += ' ' * indent + 'AND @' + str(self.value.origin()) + '\n'
+      s += ' ' * indent + 'AND ' + str(self.value.dims()) + '@' + str(self.value.origin()) + '\n'
       for child in self.children:
         s += child._inner_str(indent+2)
     return s
@@ -296,5 +301,12 @@ def debug():
   print ftree
   ftree[block[5,9]] = 37
   print ftree
-                 
+  v = block[5:,:]
+  ftree.set_or_branch(v, 99)
+  print ftree
+  v = block[8:,8:]
+  ftree.set_or_branch(v, 88)
+  print ftree
+             
+  print ptree[0]
 debug()
