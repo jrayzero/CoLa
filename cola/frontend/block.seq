@@ -167,7 +167,7 @@ class Multidim[E,T,C]:
     return tuple(c.start for c in self._cgrid_mapping)
   
   # doesn't do a containment check. just compares relative locations
-  def origin_relative_to(self, other: Multidim[E,T,C]) -> T:
+  def origin_relative_to[E2](self, other: Multidim[E2,T,C]) -> T:
     """
     Return the origin of self relative to other wrt their CoordGrids 
     (which should be the same)
@@ -184,7 +184,7 @@ class Multidim[E,T,C]:
     else:
       return (ColaSlice(origin_tup[0], origin_tup[0] + dim_tup[0], 1),) + Multidim._compute_area_tuple(origin_tup[1:], dim_tup[1:])
 
-  def colocate(self, surrounding_region: Multidim[E,T,C], other: Multidim[E,T,C]) -> Multidim[E,T,C]:
+  def colocate[E2,E3](self, surrounding_region: Multidim[E2,T,C], other: Multidim[E3,T,C]) -> Multidim[E3,T,C]:
     """
     Return the region of self within other, where self and other may have different CoordGrids.
     First, self is located within surrounding_region (which should have the same cgrid as self, 
@@ -207,7 +207,7 @@ class Multidim[E,T,C]:
       stops_oob = self_mapping[0].stop > other_mapping[0].stop
       return not (starts_oob or stops_oob) and Multidim._do_fully_contained(self_mapping[1:], other_mapping[1:])
 
-  def fully_contained(self, other: Multidim[E,T,C]) -> bool:
+  def fully_contained[E2](self, other: Multidim[E2,T,C]) -> bool:
     """
     Check if self is fully contained within the region specified by other
     wrt their CoordGrids (which should be the same). self is fully contained
@@ -227,7 +227,7 @@ class Multidim[E,T,C]:
       strides_oob = self_mapping[0].stride == other_mapping[0].stride
       return starts_oob and stops_oob and strides_oob and Multidim._do_is_same_region(self_mapping[1:], other_mapping[1:])
 
-  def is_same_region(self, other: Multidim[E,T,C]) -> bool:
+  def is_same_region[E2](self, other: Multidim[E2,T,C]) -> bool:
     """
     Check if self covers the exact same space as the region specified by other
     wrt their CoordGrids (which should be the same). Includes starts, stops, and strides.
@@ -423,7 +423,7 @@ class Multidim[E,T,C]:
                         other_cgrid_mapping[0].stride // self_cgrid_mapping[0].stride),) + \
                         Multidim._get_mapping(self_cgrid_mapping[1:], other_cgrid_mapping[1:], other_origin[1:], relative_origin[1:])       
 
-  def __getitem__(self, other: Multidim[E,T,C]) -> Multidim[E,T,C]:    
+  def __getitem__[E2](self, other: Multidim[E2,T,C]) -> Multidim[E,T,C]:    
     """
     Returns the region in self corresponding to other. Both self and other must share the same cgrid.
     Other's stride must be a multiple of self's stride, and its origin must fall on a stride line of 
@@ -493,6 +493,21 @@ class Multidim[E,T,C]:
       return (ColaSlice(combo_start, combo_stop, combo_stride),) + Multidim._do_combined(self_cgrid_mapping[1:], canon[1:])
 
   def __getitem__(self, idxs) -> Multidim[E,T,C]:
+#    if isinstance(idxs, Multidim):
+#      """
+#      Returns the region in self corresponding to other. Both self and other must share the same cgrid.
+#      Other's stride must be a multiple of self's stride, and its origin must fall on a stride line of 
+#      self. However, other doesn't actually need to be *within* self according to these requirements,
+#      so you can get things out-of-bounds. Use clamp(self0 if you want to actually constrain this (i.e.
+#      self[other].clamp(self)
+#      """
+#      other = idxs
+#      assert self._cgrid == other._cgrid
+#      other_origin = other.origin()
+#      # this becomes the start of the accessed region
+#      relative = other.origin_relative_to(self)
+#      return self[Multidim._get_mapping(self._cgrid_mapping, other._cgrid_mapping, other_origin, relative)]
+#    else:
     """
     Return the region covered by the indexes idxs. Idxs can be combinations of integers, Slices, or
     ColaSlices. Indexing is allowed to use either 1 or N indices. If there is 1 index, it 
@@ -512,7 +527,7 @@ class Multidim[E,T,C]:
       canon = Multidim._do_canonicalize(idxs, self._dims)
       return Multidim(self, Multidim._do_combined(self._cgrid_mapping, canon))  
 
-  def __setitem__(self, idx: Multidim[E,T,C], item: E):
+  def __setitem__[E2](self, idx: Multidim[E2,T,C], item: E):
     """
     Broadcast item to the region in self covered by idx.
     """
@@ -811,10 +826,10 @@ class Block[E,T,C]:
   def __getitem__(self, idxs) -> View[E,T,C]:
     return View(self.base[idxs])
 
-  def __getitem__(self, idx: Block[E,T,C]) -> View[E,T,C]:
+  def __getitem__[E2](self, idx: Block[E2,T,C]) -> View[E,T,C]:
     return View(self.base[idx.base]) 
 
-  def __getitem__(self, idx: View[E,T,C]) -> View[E,T,C]:
+  def __getitem__[E2](self, idx: View[E2,T,C]) -> View[E,T,C]:
     return View(self.base[idx.base]) 
 
   def __getitem__(self, relative: str) -> View[E,T,C]:
@@ -876,6 +891,12 @@ class View[E,T,C]:
   # for internal building
   def __init__(self, other: Multidim[E,T,C]):
     self.base = other
+
+  def deep_cast[E2](self) -> Block[E2,T,C]:
+    """
+    Creates a new Block with same dimensions and mappings as self, but with a different element type (E2)
+    """
+    return Block(self.base.deep_cast[E2]())
 
   def dims(self) -> T:
     return self.base.dims()
@@ -943,10 +964,10 @@ class View[E,T,C]:
   def __setitem__(self, relative_name: str, relative: View[E,T,C]):
     self.base[relative_name] = relative.base
 
-  def __getitem__(self, idx: Block[E,T,C]) -> View[E,T,C]:
+  def __getitem__[E2](self, idx: Block[E2,T,C]) -> View[E,T,C]:
     return View(self.base[idx.base]) 
 
-  def __getitem__(self, idx: View[E,T,C]) -> View[E,T,C]:
+  def __getitem__[E2](self, idx: View[E2,T,C]) -> View[E,T,C]:
     return View(self.base[idx.base]) 
 
   def __getitem__(self, idxs) -> View[E,T,C]:
