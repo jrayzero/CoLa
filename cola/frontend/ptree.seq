@@ -302,10 +302,10 @@ def debug():
   ftree[block[5,9]] = 37
   print ftree
   v = block[5:,:]
-  ftree.set_or_branch(v, 99)
+  ftree.any_match(v, 99)
   print ftree
   v = block[8:,8:]
-  ftree.set_or_branch(v, 88)
+  ftree.any_match(v, 88)
   print ftree
              
   print ptree[0]

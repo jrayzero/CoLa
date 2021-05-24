@@ -6,8 +6,11 @@ class FlagTree[E,T,C,F]:
   Set of flags corresponding to a partition defined by an AndPTree. See AndPTree for
   the to_flagtree function. This is extremely similar to the structure of AndPTree.
   You can incrementally build up the tree too. This does not check that your partitions
-  don't overlap and what not because that would be expensive. If there would be multiple 
-  matches for your query, the first match would be used.
+  don't overlap and what not because that would be expensive. 
+
+  There are several ways to access a FlagTree. See __getitem__, __setitem__, leaf_match, any_match.
+  
+
   F = type of flag value
   """
 
@@ -38,9 +41,82 @@ class FlagTree[E,T,C,F]:
   def add_child(self, child: FlagTree[E,T,C,F]):
     self.children.append(child)
 
-  def set_or_branch(self, obj: View[E,T,C], flag: F):
+  # TODO support reading/writing from multiple flags values if obj spans over multiple nodes
+  # TODO if I had a separate getitem wrapper, I wouldn't have to check containment in the base case
+  # each time (cause other than the first iteration, the base case is only reached IF obj is fully contained
+  # in self.) Same goes for setitem
+
+  def _getitem(self, obj):
+    if len(self.children) == 0:
+      return self.flag
+    else:
+      for child in self.children:
+        if obj.base.fully_contained(child.value.base):
+          return child._getitem(obj)
+      # didn't find a node
+      return None    
+
+  def __getitem__(self, obj: View[E,T,C]) -> Optional[F]:
     """
-    See if view has a node dedicated to it in the tree. If yes,
+    Get flag value out of the leaf that completely encapsluates obj (or return None).
+    """
+    if len(self.children) == 0:
+      if obj.base.fully_contained(self.value.base):
+        return self.flag
+      else:
+        return None
+    else:
+      return self._getitem(obj)
+
+  def _setitem(self, obj, flag):
+    if len(self.children) == 0:
+      assert obj.base.fully_contained(self.value.base)
+      self.flag = flag
+    else:
+      found = False
+      for child in self.children:
+        if obj.base.fully_contained(child.value.base):
+          child[obj] = flag
+          found = True
+          break
+      assert found
+
+  def __setitem__(self, obj: View[E,T,C], flag: F):
+    """
+    Set flag value out for the leaf that completely encapsluates obj (or fail)
+    """    
+    if len(self.children) == 0:
+      assert obj.base.fully_contained(self.value.base)
+      self.flag = flag
+    else:
+      found = False
+      for child in self.children:
+        if obj.base.fully_contained(child.value.base):
+          child._setitem(obj, flag)
+          found = True
+          break
+      assert found
+
+  def _leaf_match(self, obj, flag):
+    if len(self.children) == 0:
+      if obj.base.is_same_region(self.value.base):
+        # change this flag
+        self.flag = flag
+      else:
+        # If we are here, it didn't exist, so make a node and set it      
+        ft = FlagTree(flag, obj)
+        self.add_child(ft)
+      return
+    else:
+      for child in self.children:
+        if obj.base.fully_contained(child.value.base):
+          child._leaf_match(obj, flag)
+          return
+      assert False # doesn't have a location at all in this stre
+
+  def leaf_match(self, obj: View[E,T,C], flag: F):
+    """
+    See if obj has a leaf node that exactly matches it. If yes,
     set the flag. Otherwise, add in the node in the appropriate location
     and set the flag.
     """
@@ -55,19 +131,104 @@ class FlagTree[E,T,C,F]:
         self.add_child(ft)
       return
     else:
-      # see if we are the same
+      self._leaf_match(obj, flag)
+
+  def _leaf_match(self, obj) -> Optional[F]:
+    if len(self.children) == 0:
+      if obj.base.is_same_region(self.value.base):
+        return self.flag
+      else:
+        return None
+    else:
+      for child in self.children:
+        if obj.base.fully_contained(child.value.base):
+          return child._leaf_match(obj)
+      return None
+
+  def leaf_match(self, obj: View[E,T,C]) -> Optional[F]:
+    """
+    See if obj has a leaf node that exactly matches it. If yes,
+    get the flag.
+    """ 
+    if len(self.children) == 0:
       assert obj.base.fully_contained(self.value.base)
+      if obj.base.is_same_region(self.value.base):
+        return self.flag
+      else:
+        return None
+    else:
+      return self._leaf_match(obj)
+
+  def _any_match(self, obj, flag):
+    if len(self.children) == 0:
+      if obj.base.is_same_region(self.value.base):
+        # change this flag
+        self.flag = flag
+      else:
+        # If we are here, it didn't exist, so make a node and set it      
+        ft = FlagTree(flag, obj)
+        self.add_child(ft)
+      return
+    else:
       if obj.base.is_same_region(self.value.base):
         # change this flag
         self.flag = flag
         return
       for child in self.children:
         if obj.base.fully_contained(child.value.base):
-          child.set_or_branch(obj, flag)
+          child._any_match(obj, flag)
           return
       # if reached here, then we can't go down another level, so we add ourself here    
       ft = FlagTree(flag, obj)
       self.add_child(ft)
+
+  def any_match(self, obj: View[E,T,C], flag: F):
+    """
+    See if view has a leaf node that exactly matches it. If yes,
+    set the flag. Otherwise, add in the node in the appropriate location
+    and set the flag.
+    """
+    if len(self.children) == 0:
+      assert obj.base.fully_contained(self.value.base)
+      if obj.base.is_same_region(self.value.base):
+        # change this flag
+        self.flag = flag
+      else:
+        # If we are here, it didn't exist, so make a node and set it      
+        ft = FlagTree(flag, obj)
+        self.add_child(ft)
+      return
+    else:
+      self._any_match(obj, flag)
+      return 
+
+  def _any_match(self, obj) -> Optional[F]:
+    if len(self.children) == 0:
+      if obj.base.is_same_region(self.value.base):
+        return self.flag
+      else:
+        return None
+    else:
+      if obj.base.is_same_region(self.value.base):
+        return self.flag
+      for child in self.children:
+        if obj.base.fully_contained(child.value.base):
+          return child._any_match(obj)
+      return None
+
+  def any_match(self, obj: View[E,T,C]) -> Optional[F]:
+    """
+    See if view has a leaf node that exactly matches it. If yes,
+    get the flag.
+    """
+    if len(self.children) == 0:
+      assert obj.base.fully_contained(self.value.base)
+      if obj.base.is_same_region(self.value.base):
+        return self.flag
+      else:
+        return None
+    else:
+      return self._any_match(obj)
 
   def _iterate_leaves(self):
     if len(self.children) == 0:
@@ -78,42 +239,6 @@ class FlagTree[E,T,C,F]:
 
   def do_iter(self):
     return self._iterate_leaves()
-
-  # TODO support reading/writing from multiple flags values if obj spans over multiple nodes
-  # TODO if I had a separate getitem wrapper, I wouldn't have to check containment in the base case
-  # each time (cause other than the first iteration, the base case is only reached IF obj is fully contained
-  # in self.) Same goes for setitem
-  def __getitem__(self, obj: View[E,T,C]) -> Optional[F]:
-    """
-    Get flag value out of the node that completely encapsluates obj (or return None).
-    """
-    if len(self.children) == 0:
-      if obj.base.fully_contained(self.value.base):
-        return self.flag
-      else:
-        return None
-    else:
-      for child in self.children:
-        if obj.base.fully_contained(child.value.base):
-          return child[obj]
-      # didn't find a node
-      return None
-      
-  def __setitem__(self, obj: View[E,T,C], flag: F):
-    """
-    Set flag value out for the node that completely encapsluates obj (or fail)
-    """    
-    if len(self.children) == 0:
-      assert obj.base.fully_contained(self.value.base)
-      self.flag = flag
-    else:
-      found = False
-      for child in self.children:
-        if obj.base.fully_contained(child.value.base):
-          child[obj] = flag
-          found = True
-          break
-      assert found
 
   def _inner_str(self, indent) -> str:
     s = ''
