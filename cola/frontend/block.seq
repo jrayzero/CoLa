@@ -449,12 +449,16 @@ class Multidim[E,T,C]:
                         Multidim._get_mapping(self_cgrid_mapping[1:], other_cgrid_mapping[1:], other_origin[1:], relative_origin[1:])       
 
   def __getitem__[E2](self, other: Multidim[E2,T,C]) -> Multidim[E,T,C]:    
+    
     """
     Returns the region in self corresponding to other. Both self and other must share the same cgrid.
-    Other's stride must be a multiple of self's stride, and its origin must fall on a stride line of 
-    self. However, other doesn't actually need to be *within* self according to these requirements,
+    However, other doesn't actually need to be *within* self according to these requirements,
     so you can get things out-of-bounds. Use clamp(self0 if you want to actually constrain this (i.e.
-    self[other].clamp(self)
+    self[other].clamp(self).
+
+    Originally, other's stride must be a multiple of self's stride, and its origin must fall on a stride line of 
+    self. But this condition is hard to check and seems rare as an error. It doesn't really cause an issue per se,
+    you'll just get possibly a region you don't expect.
     """
     if self._cgrid != other._cgrid:
       raise ColaError()
