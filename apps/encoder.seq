@@ -1,20 +1,35 @@
 from ..cola.frontend.block import *
 from ..cola.frontend.error import *
 from ..cola.frontend.scan import *
+from ..cola.frontend.flagtree import *
 
 from basic_io import *
 from partition import *
 from config import *
 from constants import *
+from rdo import *
+from cost import *
 
 ifd = open(raw, 'rb')
 ofd = open(h264_out, 'wb')
 
 chroma_height,chroma_width = compute_chroma_frame_dims()
+# Buffers to hold a single frame of data
 Y_frame = Block.make[byte](frame_height, frame_width)
 Cb_frame = Block.make[byte](chroma_height, chroma_width) if chroma_format != SAMPLE_MONO else None
 Cr_frame = Block.make[byte](chroma_height, chroma_width) if chroma_format != SAMPLE_MONO else None
+# Buffers to hold a single frame of reconstructed data (and changes the dtype)
+Y_frame_recons = Y_frame.deep_cast[int]()
+Cb_frame_recons = Cb_frame.deep_cast[int]() if chroma_format != SAMPLE_MONO else None
+Cr_frame_recons = Cr_frame.deep_cast[int]() if chroma_format != SAMPLE_MONO else None
 
+# FlagTrees for various things
+mb_type_info = FlagTree(SLICE_UNKNOWN, Y_frame)
+
+# some initialization
+lambda_val = Cost.lambda_Sullivan_Wiegand(QP)
+
+# main loop
 for f in range(frames):
   # read a frame
   if input_cs == YUV_CS:
@@ -22,11 +37,14 @@ for f in range(frames):
       YUV.read_frame_mono(frame_height, frame_width, Y_frame, ifd, bit_depth)      
     elif input_order == PLANAR:
       if chroma_format == SAMPLE_420:
-        YUV.read_frame_420_planar(frame_height, frame_width, Y_frame, ~Cb_frame, ~Cr_frame, ifd, bit_depth)
+        YUV.read_frame_420_planar(frame_height, frame_width, Y_frame, \
+                                  ~Cb_frame, ~Cr_frame, ifd, bit_depth)
       elif chroma_format == SAMPLE_422:
-        YUV.read_frame_422_planar(frame_height, frame_width, Y_frame, ~Cb_frame, ~Cr_frame, ifd, bit_depth)
+        YUV.read_frame_422_planar(frame_height, frame_width, Y_frame, \
+                                  ~Cb_frame, ~Cr_frame, ifd, bit_depth)
       else: 
-        YUV.read_frame_444_planar(frame_height, frame_width, Y_frame, ~Cb_frame, ~Cr_frame, ifd, bit_depth)
+        YUV.read_frame_444_planar(frame_height, frame_width, Y_frame, \
+                                  ~Cb_frame, ~Cr_frame, ifd, bit_depth)
   # macroblock partition
   # even though YCbCr isn't necessarily the space we are in, I just called things that to make life easier
   Y_mbs = Partition.grid(Y_frame, 16)[0]
@@ -44,12 +62,14 @@ for f in range(frames):
       _Cr_mbs = Partition.grid(Cr_frame, 16)[0]             
     Cb_mbs = ~_Cb_mbs
     Cr_mbs = ~_Cr_mbs
+    pred_info = Y_mbs.to_flagtree(False)
     for Y_mb,Cb_mb,Cr_mb in scan(Y_mbs, Cb_mbs, Cr_mbs):
-      # TODO left off here. Start doing the intra prediction
-      print(Y_mb)
-      print(Cb_mb)
-      print(Cr_mb)
-      exit(49)
+      # Make this an I slice until told otherwise
+      mb_type_info[Y_mb] = I_SLICE
+      FullRDO.intra(Y_mb, Y_frame_recons, Cb_mb, Cb_frame_recons, Cr_mb, Cr_frame_recons, \
+                    mb_type_info, pred_info, constrained_intra_pred_flag, bit_depth, \
+                    lambda_val)
+    exit(48)
   else:
     raise NotImplementedError()
     for Y_mb in scan(Y_mbs):
@@ -58,3 +78,4 @@ for f in range(frames):
 ifd.close()
 ofd.flush()
 ofd.close()
+

@@ -1,0 +1,109 @@
+from ..cola.frontend.scan import *
+from ..cola.frontend.constants import *
+from intra import *
+from constants import *
+from cost import *
+
+# TODO left off here: Try and fake the reconstruction (maybe just use the prediction itself and then just pick the best mode)
+# and add in all the stuff that goes with that.
+
+  # TODO For 8x8 and 4x4, you couldn't do this in parallel b/c they'd both be overwriting the reconstruction frame.
+  # Make it so you copy out the part you need and then just use that as the reference (same with pred info and mb type)
+
+class FullRDO:
+
+  """
+  Tools for doing full rate-distortion optimized mode selection. This is very computationally expensive.
+  """
+
+  def intra(Y_mb, Y_recons, Cb_mb, Cb_recons, Cr_mb, Cr_recons, mb_type_info, \
+            pred_info, constrained_intra_pred_flag, bit_depth, lambda_val):
+    """
+    Do full RDO for intra mode selection.
+    """
+    best_cost = MAX_FLOAT_32
+    best_sz = INTRA_16x16
+    best_recons = None
+    ### 16x16 ###
+    preds_16x16 = H264Intra16x16.schedule_luma(Y_mb, Y_recons, mb_type_info, \
+                                               pred_info, constrained_intra_pred_flag, bit_depth)
+    best_16x16_mode = 0
+    for idx,pred in enumerate(preds_16x16):
+      # TODO how to select "most probable mode"?
+      cost = FullRDO.rate_decision_A(Y_mb, pred, lambda_val, idx == 2)
+      if cost < best_cost:
+        best_cost = cost
+        best_16x16_mode = idx
+        # TODO FOR NOW, USING PRED AS RECONS
+        best_recons = pred
+    print 'best 16x16 mode for region at ' + str(Y_mb.origin_relative_to(Y_recons)) + ' is ' + \
+      str(best_16x16_mode) + ' with cost ' + str(best_cost)
+
+
+    ### 8x8 ###
+    Y_8x8s = Partition.grid(Y_mb, 8)[0]
+    # locally build up the mb reconstruction from the 8x8 subblocks
+    Y_8x8_recons = Y_mb.deep_cast[int]()
+    Y_8x8_pred = Y_mb.deep_cast[int]() # fill in this with the best pred for each 8x8 section
+    for y in scan(Y_8x8s): # y is an 8x8 block
+      preds_8x8 = H264Intra8x8.schedule_luma(y, Y_recons, pred_info, \
+                                             constrained_intra_pred_flag, bit_depth)
+      best_local_pred = preds_8x8[0]
+      best_local_mode = 0
+      best_local_cost = MAX_FLOAT_32
+      best_local_recons = preds_8x8[0]
+      for idx,pred in enumerate(preds_8x8):
+        # TODO how to select "most probable mode"?
+        cost = FullRDO.rate_decision_A(y, pred, lambda_val, idx == 2)
+        if cost < best_local_cost:
+          best_local_cost = cost
+          best_local_mode = idx
+          # TODO FOR NOW, USING PRED AS RECONS
+          best_local_recons = pred 
+          best_local_pred = pred
+      print 'best 8x8 mode for region at ' + str(y.origin_relative_to(Y_mb)) + ' is ' + str(best_local_mode) + \
+        ' with cost ' + str(best_local_cost) + ' (' + str(y.origin_relative_to(Y_recons)) + ')' 
+      Y_8x8_recons[y] = ~best_local_recons
+      Y_8x8_pred[y] = ~best_local_pred
+    # now see if the whole prediction is better than the 16x16 one
+    # just use a straight SAD here
+    cost = FullRDO.rate_decision_A(Y_mb, Y_8x8_pred, lambda_val, True) # pretend that for this, we #consider 8x8 to be the mode and it is most probable
+    if cost < best_cost:
+      best_cost = cost
+      best_sz = INTRA_8x8
+      best_recons = Y_8x8_recons
+
+      
+    ### Finalize ###
+
+    print 'Best size ' + str(int_to_intra(best_sz)) + ' for mb ' + str(Y_mb.origin())
+    # Set the status of the macroblock to intra. We don't need to set it for the individual 8x8 and# 4x4 partitions 
+    # because intra-pred applies to the whole macroblock.
+    pred_info[Y_mb] = True
+    # write the best stuff
+    assert best_recons
+    Y_recons[Y_mb] = ~best_recons
+      
+  def rate_decision_A[T](orig, _pred: Optional[T], lambda_val: float, P: bool) -> float:
+    """
+    Computes JSAD = SAD + λ * 4P, where SAD is between the original and the prediction and P == 0
+    for the most probable mode. So this is a fast mode
+    https://link.springer.com/content/pdf/10.1007/s11760-011-0267-z.pdf
+    JM 12.4
+    """
+    if not _pred:
+      return MAX_FLOAT_32
+    else:
+      return FullRDO.rate_decision_A(orig, ~_pred, lambda_val, P)
+    
+  def rate_decision_A(orig, pred, lambda_val: float, P: bool) -> float:
+    """
+    Computes JSAD = SAD + λ * 4P, where SAD is between the original and the prediction and P == 0
+    for the most probable mode. So this is a fast mode
+    https://link.springer.com/content/pdf/10.1007/s11760-011-0267-z.pdf
+    JM 12.4
+    """
+    cost = Cost.sad(orig, pred) + lambda_val * 4.0 * float(P)
+    return cost
+    
+

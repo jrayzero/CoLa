@@ -3,6 +3,10 @@ from error import ColaError
 
 # TODO make an separate set of functions that don't fail 
 
+# NOTE: you can shoot yourself in the foot with a flagtree if you make it all manually. I recommend
+# building it in line with an AndPTree
+
+
 @dataclass(init=False)
 class FlagTree[E,T,C,F]:
   """

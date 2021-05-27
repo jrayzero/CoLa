@@ -1,3 +1,6 @@
 cola_feature_todo.txt
 build
 *~
+apps/*.dSYM
+apps/*.o
+apps/encoder

@@ -1,4 +1,6 @@
 # slice types
+
+SLICE_UNKNOWN = -1
 I_SLICE = 0
 P_SLICE = 1
 B_SLICE = 2
@@ -8,6 +10,16 @@ SI_SLICE = 3
 INTRA_4x4 = 0
 INTRA_8x8 = 1
 INTRA_16x16 = 2
+
+def int_to_intra(ident: int) -> str:
+  if ident == INTRA_4x4:
+    return 'INTRA_4x4'
+  elif ident == INTRA_8x8:
+    return 'INTRA_8x8'
+  elif ident == INTRA_16x16:
+    return 'INTRA_16x16'
+  else:
+    return 'Unknown'
 
 # intraprediction modes
 VERT_MODE = 0

@@ -34,11 +34,13 @@ class ScanUtils:
     else:
       return (item.do_iter(),) + ScanUtils._scan(*items)
 
-  def _scan(item, *items):
-    if staticlen(items) == 0:
-      return (iter(item),)
-    else:
-      return (iter(item),) + ScanUtils._scan(*items)
+# TODO having this messes up the type system (for some reason it matches Block to this when you have Block in items, so
+# I imagine that 
+#  def _scan(item, *items):
+#    if staticlen(items) == 0:
+#      return (iter(item),)
+#    else:
+#      return (iter(item),) + ScanUtils._scan(*items)
 
   def _scan1[E,T,C](item: View[E,T,C]):
     return iter(item.base)
@@ -55,8 +57,8 @@ class ScanUtils:
   def _scan1[E,T,C](item: AppliedTraversal[E,T,C]):
     return item.do_iter()
 
-  def _scan1(item):
-    return iter(item)
+#  def _scan1(item):
+#    return iter(item)
 
 # users should utilize scan for iteration on blocks and views. Multidim just uses __iter__, but users
 # shouldn't have to touch that part.

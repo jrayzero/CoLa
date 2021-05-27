@@ -1,1 +1,2 @@
 MAX_INT_32 = 2147483647
+MAX_FLOAT_32 = 3.4028234664e+38 # copied from C float.h

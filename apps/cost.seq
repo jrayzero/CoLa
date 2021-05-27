@@ -7,40 +7,40 @@ from transforms import Hadamard
 
 class Cost:
 
-  def sad(reference: int, estimate: int) -> int:
-    return abs(reference-estimate)
+  def sad(actual: int, estimate: int) -> int:
+    return abs(actual-estimate)
 
-  def sad(reference, estimate) -> int:
+  def sad(actual, estimate) -> int:
     cost = 0
-    for r,p in scan(reference, estimate):
+    for r,p in scan(actual, estimate):
       cost += abs(r() - p())
     return cost
 
-  def ssd(reference: int, estimate: int) -> int:
-    return (reference-estimate) ** 2
+  def ssd(actual: int, estimate: int) -> int:
+    return (actual-estimate) ** 2
 
-  def ssd(reference, estimate) -> int:
+  def ssd(actual, estimate) -> int:
     cost = 0
-    for r,p in scan(reference, estimate):
+    for r,p in scan(actual, estimate):
       cost += (r() - p()) ** 2
     return cost
 
-  def satd(reference, estimate) -> int:
+  def satd(actual, estimate) -> int:
     cost = 0
-    for h in scan(Hadamard.hadamard(reference, estimate)):
+    for h in scan(Hadamard.hadamard(actual, estimate)):
       cost += abs(h())
     return cost
   
   def lambda_Sullivan_Wiegand(QP: int):
-    return 0.85 * 2 ** ((QP-12)//3)
+    return 0.852 ** ((QP-12)//3)
 
-  def rate_distortion_ssd(reference, estimate, lambda_val: int, R: int) -> int:
-    return Cost.ssd(reference, estimate) + lambda_val * R
+#  def rate_distortion_ssd(actual, estimate, lambda_val: int, R: int) -> int:
+#    return Cost.ssd(actual, estimate) + lambda_val * R
 
-  # P = 0 for most probable mode
-  def rate_distortion_sad(reference, estimate, lambda_val: int, P: bool) -> int:
-    return Cost.sad(reference, estimate) + lambda_val * int(P)
+#  # P = 0 for most probable mode
+#  def rate_distortion_sad(actual, estimate, lambda_val: int, P: bool) -> int:
+#    return Cost.sad(actual, estimate) + lambda_val * int(P)
 
-  # P = 0 for most probable mode
-  def rate_distortion_satd(reference, estimate, lambda_val: int, P: bool) -> int:
-    return Cost.satd(reference, estimate) + lambda_val * int(P)
+#  # P = 0 for most probable mode
+#  def rate_distortion_satd(actual, estimate, lambda_val: int, P: bool) -> int:
+#    return Cost.satd(actual, estimate) + lambda_val * int(P)

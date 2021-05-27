@@ -4,7 +4,8 @@ class YUV:
 
   def read_frame_mono(frame_height, frame_width, frame, fd: File, bit_depth=8):
     """
-    Read one frame worth of 420 YUV planar values (i.e. YYYY...UUUU...VVVV....).
+    Read one frame worth of 420 YUV planar values (i.e. YYYY...UUUU...VVVV....) as bytes.
+    Does not pad. Assumes bit_depth is multiple of 8.
     @ARG(frame_height)
     @ARG(frame_width)
     @ARG(frame)
@@ -18,7 +19,8 @@ class YUV:
 
   def read_frame_420_planar(frame_height, frame_width, Y_frame, U_frame, V_frame, fd: File, bit_depth=8):
     """
-    Read one frame worth of 420 YUV planar values (i.e. YYYY...UUUU...VVVV....).
+    Read one frame worth of 420 YUV planar values (i.e. YYYY...UUUU...VVVV....) as bytes.
+    Does not pad. Assumes bit_depth is multiple of 8.
     @ARG(frame_height)
     @ARG(frame_width)
     @ARG(Y_frame)
@@ -36,7 +38,8 @@ class YUV:
 
   def read_frame_422_planar(frame_height, frame_width, Y_frame, U_frame, V_frame, fd: File, bit_depth=8):
     """
-    Read one frame worth of 420 YUV planar values (i.e. YYYY...UUUU...VVVV....).
+    Read one frame worth of 420 YUV planar values (i.e. YYYY...UUUU...VVVV....) as bytes.
+    Does not pad. Assumes bit_depth is multiple of 8.
     @ARG(frame_height)
     @ARG(frame_width)
     @ARG(Y_frame)
@@ -54,7 +57,8 @@ class YUV:
 
   def read_frame_444_planar(frame_height, frame_width, Y_frame, U_frame, V_frame, fd: File, bit_depth=8):
     """
-    Read one frame worth of 420 YUV planar values (i.e. YYYY...UUUU...VVVV....).
+    Read one frame worth of 420 YUV planar values (i.e. YYYY...UUUU...VVVV....) as bytes.
+    Does not pad. Assumes bit_depth is multiple of 8.
     @ARG(frame_height)
     @ARG(frame_width)
     @ARG(Y_frame)
@@ -72,7 +76,8 @@ class YUV:
 
   def write_frame_mono(frame_height, frame_width, frame, fd: File, bit_depth=8):
     """
-    Write one frame worth of monochrome values.
+    Write one frame worth of monochrome values as bytes.
+    Does not pad. Assumes bit_depth is multiple of 8.
     @ARG(frame_height)
     @ARG(frame_width)
     @ARG(frame)

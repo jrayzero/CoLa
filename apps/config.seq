@@ -14,6 +14,7 @@ frames = parser.parser.select('frames', 300)
 frame_height = parser.parser.select('frame_height', 144)
 frame_width = parser.parser.select('frame_width', 176)
 bit_depth = parser.parser.select('bit_depth', 8)
+QP = parser.parser.select('QP', 28)
 
 # constrained baseline = 66 + True
 profile_idc = parser.parser.select('profile_idc', 66)
@@ -41,10 +42,10 @@ elif chroma_format == SAMPLE_444:
 else:
   assert False
       
-frame_is_slice = True # If true, each frame is exactly one slice
-GOP = [I_SLICE]
-decode_order = [0] # how to order the GOP indices when transmitting
-max_DPB_sz = 5
+#GOP = [I_SLICE]
+#decode_order = [0] # how to order the GOP indices when transmitting
+#max_DPB_sz = 5
+constrained_intra_pred_flag = parser.parser.select('constrained_intra_pred_flag', True) # True = allow only intra
 
 def compute_chroma_frame_dims() -> Tuple[int,int]:
   if chroma_format == SAMPLE_MONO:
