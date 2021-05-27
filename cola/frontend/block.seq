@@ -434,11 +434,12 @@ class Multidim[E,T,C]:
       # if fails: other\'s origin does not fall on self\'s stride line. This means that other's
       # origin should fall on a point that self's falls also falls on
       # TODO this condition is incorrect. I'm ignoring it for now.
+      # shift both origins to start from 0
 #      if other_origin[0] % (self_cgrid_mapping[0].start+self_cgrid_mapping[0].stride) != 0:
 #        raise ColaError(str(other_origin[0]) + ' ' + str(self_cgrid_mapping[0]))
       # if fails: 
-      if other_cgrid_mapping[0].stride % self_cgrid_mapping[0].stride != 0:
-        raise ColaError('other\'s stride is not a multiple of self\'s stride')
+#      if other_cgrid_mapping[0].stride % self_cgrid_mapping[0].stride != 0:
+#        raise ColaError('other\'s stride is not a multiple of self\'s stride')
       # get the stop of other RELATIVE to self
       stop = other_cgrid_mapping[0].stop - self_cgrid_mapping[0].start-1
       # creating the mapping RELATIVE to self 
