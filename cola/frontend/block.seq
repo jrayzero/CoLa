@@ -1109,31 +1109,45 @@ class byte:
     %tmp = sub i64 %0, %other
     ret i64 %tmp
 
+class Casts:
+
+  def cast(a: byte, b: int):
+    return int(a),b
+
+  def cast(a: int, b: byte):
+    return a,int(b)
+
+  def cast(a: int, b: int):
+    return a,b
+
+  def cast(a: byte, b: byte):
+    return a,b
 
 @extend 
 class Multidim[E,T,C]:
-  def __sub__(self, other: Multidim[E,T,C]):
+  def __sub__[E2](self, other: Multidim[E2,T,C]):
     if self.dims() != other.dims():
       raise ColaError()
-    res = Multidim[E,T,C](self.dims())
+    res = Multidim[E2,T,C](self.dims())
     for n in range(self.nunits()):
-      res[n] = self(n) - other(n)
+      a,b = Casts.cast(self(n),other(n))
+      res[n] = a - b
     return res
 
 @extend
 class Block[E,T,C]:
-  def __sub__(self, other: Block[E,T,C]) -> Block[E,T,C]:
+  def __sub__[E2](self, other: Block[E2,T,C]) -> Block[E2,T,C]:
     return Block(self.base - other.base)
 
-  def __sub__(self, other: View[E,T,C]) -> Block[E,T,C]:
+  def __sub__[E2](self, other: View[E2,T,C]) -> Block[E2,T,C]:
     return Block(self.base - other.base)
 
 @extend
 class View[E,T,C]:
-  def __sub__(self, other: Block[E,T,C]) -> Block[E,T,C]:
+  def __sub__[E2](self, other: Block[E2,T,C]) -> Block[E2,T,C]:
     return Block(self.base - other.base)
 
-  def __sub__(self, other: View[E,T,C]) -> Block[E,T,C]:
+  def __sub__[E2](self, other: View[E2,T,C]) -> Block[E2,T,C]:
     return Block(self.base - other.base)
 
 ### Some useful extensions
