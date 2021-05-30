@@ -65,7 +65,7 @@ class FullRDO:
         ' with cost ' + str(best_local_cost) + ' (' + str(y.origin_relative_to(Y_recons)) + ')' 
       Y_8x8_recons[y] = ~best_local_recons
       Y_8x8_pred[y] = ~best_local_pred
-    # now see if the whole prediction is better than the 16x16 one
+    # now see if the whole prediction is better than the curren one
     # just use a straight SAD here
     cost = FullRDO.rate_decision_A(Y_mb, Y_8x8_pred, lambda_val, True) # pretend that for this, we #consider 8x8 to be the mode and it is most probable
     if cost < best_cost:
@@ -73,11 +73,44 @@ class FullRDO:
       best_sz = INTRA_8x8
       best_recons = Y_8x8_recons
 
+    ### 4x4 ###
+    Y_4x4s = Partition.grid(Y_mb, 4)[0]
+    # locally build up the mb reconstruction from the 4x4 subblocks
+    Y_4x4_recons = Y_mb.deep_cast[int]()
+    Y_4x4_pred = Y_mb.deep_cast[int]() # fill in this with the best pred for each 4x4 section
+    for y in scan(Y_4x4s): # y is an 4x4 block
+      y["macroblock"] = Y_mb
+      preds_4x4 = H264Intra4x4.schedule_luma(y, Y_recons, mb_type_info, pred_info, \
+                                             constrained_intra_pred_flag, bit_depth)
+      best_local_pred = preds_4x4[0]
+      best_local_mode = 0
+      best_local_cost = MAX_FLOAT_32
+      best_local_recons = preds_4x4[0]
+      for idx,pred in enumerate(preds_4x4):
+        # TODO how to select "most probable mode"?
+        cost = FullRDO.rate_decision_A(y, pred, lambda_val, idx == 2)
+        if cost < best_local_cost:
+          best_local_cost = cost
+          best_local_mode = idx
+          # TODO FOR NOW, USING PRED AS RECONS
+          best_local_recons = pred 
+          best_local_pred = pred
+      print 'best 4x4 mode for region at ' + str(y.origin_relative_to(Y_mb)) + ' is ' + str(best_local_mode) + \
+        ' with cost ' + str(best_local_cost) + ' (' + str(y.origin_relative_to(Y_recons)) + ')' 
+      Y_4x4_recons[y] = ~best_local_recons
+      Y_4x4_pred[y] = ~best_local_pred
+    # now see if the whole prediction is better than the current one
+    # just use a straight SAD here
+    cost = FullRDO.rate_decision_A(Y_mb, Y_4x4_pred, lambda_val, True) # pretend that for this, we #consider 4x4 to be the mode and it is most probable
+    if cost < best_cost:
+      best_cost = cost
+      best_sz = INTRA_4x4
+      best_recons = Y_4x4_recons
       
     ### Finalize ###
 
     print 'Best size ' + str(int_to_intra(best_sz)) + ' for mb ' + str(Y_mb.origin())
-    # Set the status of the macroblock to intra. We don't need to set it for the individual 8x8 and# 4x4 partitions 
+    # Set the status of the macroblock to intra. We don't need to set it for the individual 8x8 and 4x4 partitions 
     # because intra-pred applies to the whole macroblock.
     pred_info[Y_mb] = True
     # write the best stuff
