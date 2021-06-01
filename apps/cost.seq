@@ -25,11 +25,14 @@ class Cost:
       cost += (r() - p()) ** 2
     return cost
 
-  def satd(actual, estimate) -> int:
+  def satd_4x4(actual, estimate) -> int:
     cost = 0
-    for h in scan(Hadamard.hadamard(actual, estimate)):
+    diff = actual - estimate
+    output = Block(diff)
+    Hadamard.hadamard4x4(diff, output)
+    for h in scan(output):
       cost += abs(h())
-    return cost
+    return cost   
   
   def lambda_Sullivan_Wiegand(QP: int):
     return 0.852 ** ((QP-12)//3)

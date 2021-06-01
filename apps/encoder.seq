@@ -47,28 +47,28 @@ for f in range(frames):
                                   ~Cb_frame, ~Cr_frame, ifd, bit_depth)
   # macroblock partition
   # even though YCbCr isn't necessarily the space we are in, I just called things that to make life easier
-  Y_mbs = Partition.grid(Y_frame, 16)[0]
+  Y_mbs = Partition.grid(Y_frame, 16)
   if chroma_format != SAMPLE_MONO:
     _Cb_mbs = None
     _Cr_mbs = None
     if chroma_format == SAMPLE_420:
-      _Cb_mbs = Partition.grid(Cb_frame, 8)[0]
-      _Cr_mbs = Partition.grid(Cr_frame, 8)[0]
+      _Cb_mbs = Partition.grid(Cb_frame, 8)
+      _Cr_mbs = Partition.grid(Cr_frame, 8)
     elif chroma_format == SAMPLE_422:
-      _Cb_mbs = Partition.grid(Cb_frame, 16, 8)[0]
-      _Cr_mbs = Partition.grid(Cr_frame, 16, 8)[0]
+      _Cb_mbs = Partition.grid(Cb_frame, 16, 8)
+      _Cr_mbs = Partition.grid(Cr_frame, 16, 8)
     else:
-      _Cb_mbs = Partition.grid(Cb_frame, 16)[0]
-      _Cr_mbs = Partition.grid(Cr_frame, 16)[0]             
+      _Cb_mbs = Partition.grid(Cb_frame, 16)
+      _Cr_mbs = Partition.grid(Cr_frame, 16)
     Cb_mbs = ~_Cb_mbs
     Cr_mbs = ~_Cr_mbs
     pred_info = Y_mbs.to_flagtree(False)
     for Y_mb,Cb_mb,Cr_mb in scan(Y_mbs, Cb_mbs, Cr_mbs):
       # Make this an I slice until told otherwise
       mb_type_info[Y_mb] = I_SLICE
-      FullRDO.intra(Y_mb, Y_frame_recons, Cb_mb, Cb_frame_recons, Cr_mb, Cr_frame_recons, \
-                    mb_type_info, pred_info, constrained_intra_pred_flag, bit_depth, \
-                    lambda_val)
+      FullRDO.schedule(Y_mb, Y_frame_recons, Cb_mb, Cb_frame_recons, Cr_mb, Cr_frame_recons, \
+                       mb_type_info, pred_info, constrained_intra_pred_flag, bit_depth, \
+                       lambda_val)
     exit(48)
   else:
     raise NotImplementedError()

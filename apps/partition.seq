@@ -19,7 +19,7 @@ class Partition:
       yield node[:,c:c+sz]
 
   def grid(root, blk_height: int, blk_width: int):
-    return PTree(True, root, [PTree(True, r, [PTree(c) for c in Partition.col_split(r,blk_width)]) for r in Partition.row_split(root,blk_height)])
+    return PTree(True, root, [PTree(True, r, [PTree(c) for c in Partition.col_split(r,blk_width)]) for r in Partition.row_split(root,blk_height)])[0]
 
   def grid(root, sz: int):
-    return PTree(True, root, [PTree(True, r, [PTree(c) for c in Partition.col_split(r,sz)]) for r in Partition.row_split(root,sz)])
+    return PTree(True, root, [PTree(True, r, [PTree(c) for c in Partition.col_split(r,sz)]) for r in Partition.row_split(root,sz)])[0]
