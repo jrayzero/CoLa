@@ -1,0 +1,49 @@
+from ..cola.frontend.lut import *
+from ..cola.frontend.block import *
+
+# TODO adaptive rounding
+
+class Quantize:
+
+  # TODO either add a "lookup_table" tag, or see if can have class variable 
+  # attached to Quantize, so can do Quantize.mf4 or something. This is just a 
+  # constant lookup table! 
+  def m():
+    """
+    See Table 7.4 in Richardson's book
+    """
+    return LUT((6, 3), \
+               [13107, 5243, 8066, \
+                11916, 4660, 7490, \
+                10082, 4194, 6554, \
+                9362, 3647, 5825, \
+                8192, 3355, 5243, \
+                7282, 2893, 4559])
+
+  def Mf4(QP: int):
+    """
+    See page 194 in Richardson's book
+    """
+    mod = QP % 6
+    m = Quantize.m()
+    return LUT((4, 4), \
+               [m(mod,0), m(mod,2), m(mod,0), m(mod,2),\
+                m(mod,2), m(mod,1), m(mod,2), m(mod,1),\
+                m(mod,0), m(mod,2), m(mod,0), m(mod,2),\
+                m(mod,2), m(mod,1), m(mod,2), m(mod,1)])
+
+  def quantize_4x4[E,T,C](coeffs: Block[E,T,C], QP: int):
+    """
+    See page 195 in Richardson's book (except I don't use adaptive rounding)
+    """
+    return Quantize.quantize_4x4(View(coeffs), QP)
+
+  def quantize_4x4[E,T,C](coeffs: View[E,T,C], QP: int):
+    """
+    See page 195 in Richardson's book (except I don't use adaptive rounding)
+    """
+    Mf4 = Quantize.Mf4(QP)
+    # TODO this is disgusting
+    tmp = BlockOps.cast[float](Mf4 * coeffs)
+    q = BlockOps.cast[E](BlockOps.round(tmp * (1/(2**(15+QP//6)))))
+    return q

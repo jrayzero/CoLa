@@ -171,18 +171,18 @@ class H264Intra16x16:
     """
     ref_colocated = ref_region[region_to_predict]
     left,up,up_left = H264Intra16x16.check_availability(region_to_predict, ref_colocated, mb_type_info, pred_info, constrained_intra_pred_flag)
-    preds: list[Optional[Block[E2,T,C]]] = [None, None, region_to_predict.deep_cast[E2](), None]
+    preds: list[Optional[Block[E2,T,C]]] = [None, None, region_to_predict.shallow_cast[E2](), None]
     if up:
-      preds[0] = region_to_predict.deep_cast[E2]()
+      preds[0] = region_to_predict.shallow_cast[E2]()
       H264Intra16x16.vertical(preds[0], ref_colocated)
     if left:
-      preds[1] = region_to_predict.deep_cast[E2]()
+      preds[1] = region_to_predict.shallow_cast[E2]()
       H264Intra16x16.horizontal(preds[1], ref_colocated)
     # DC + planar mode
     if up and left:
       H264Intra16x16.DC_a(preds[2], ref_colocated)
       if up_left:
-        preds[3] = region_to_predict.deep_cast[E2]()
+        preds[3] = region_to_predict.shallow_cast[E2]()
         H264Intra16x16.planar(preds[3], ref_colocated, bit_depth_Y)
     elif left:
       H264Intra16x16.DC_b(preds[2], ref_colocated)
@@ -302,28 +302,28 @@ class H264Intra8x8:
     left,up_left,up,up_right = H264Intra8x8.check_availability(region_to_predict, ref_colocated, pred_info, constrained_intra_pred_flag)
     filt_row,filt_col,up_right2 = H264Intra8x8.low_pass_filter(ref_colocated, up, left, up_right, up_left)
     up_right = up_right2
-    preds: list[Optional[Block[E2,T,C]]] = [None, None, region_to_predict.deep_cast[E2](), None, None, None, None, None, None]
+    preds: list[Optional[Block[E2,T,C]]] = [None, None, region_to_predict.shallow_cast[E2](), None, None, None, None, None, None]
     if up:
-      preds[0] = region_to_predict.deep_cast[E2]()
+      preds[0] = region_to_predict.shallow_cast[E2]()
       H264Intra8x8.vertical(preds[0], filt_row)
       if up_right:
-        preds[3] = region_to_predict.deep_cast[E2]()
+        preds[3] = region_to_predict.shallow_cast[E2]()
         H264Intra8x8.diag_down_left(preds[3], filt_row)
-        preds[7] = region_to_predict.deep_cast[E2]()
+        preds[7] = region_to_predict.shallow_cast[E2]()
         H264Intra8x8.vertical_left(preds[7], filt_row)
     if left:
-      preds[1] = region_to_predict.deep_cast[E2]()
+      preds[1] = region_to_predict.shallow_cast[E2]()
       H264Intra8x8.horizontal(preds[1], filt_col)
-      preds[8] = region_to_predict.deep_cast[E2]()
+      preds[8] = region_to_predict.shallow_cast[E2]()
       H264Intra8x8.horizontal_up(preds[8], filt_col)
     if up and left:
       H264Intra8x8.DC_a(preds[2], filt_row, filt_col)
       if up_left:
-        preds[4] = region_to_predict.deep_cast[E2]()
+        preds[4] = region_to_predict.shallow_cast[E2]()
         H264Intra8x8.diag_down_right(preds[4], filt_row, filt_col)
-        preds[5] = region_to_predict.deep_cast[E2]()
+        preds[5] = region_to_predict.shallow_cast[E2]()
         H264Intra8x8.vertical_right(preds[5], filt_row, filt_col)
-        preds[6] = region_to_predict.deep_cast[E2]()
+        preds[6] = region_to_predict.shallow_cast[E2]()
         H264Intra8x8.horizontal_down(preds[6], filt_row, filt_col)
     elif left:
       H264Intra8x8.DC_b(preds[2], filt_col)
@@ -534,28 +534,28 @@ class H264Intra4x4:
     """
     ref_colocated = ref_region[region_to_predict]
     left,up_left,up,up_right = H264Intra4x4.check_availability(region_to_predict, ref_colocated, mb_type_info, pred_info, constrained_intra_pred_flag)
-    preds: list[Optional[Block[E2,T,C]]] = [None, None, region_to_predict.deep_cast[E2](), None, None, None, None, None, None]
+    preds: list[Optional[Block[E2,T,C]]] = [None, None, region_to_predict.shallow_cast[E2](), None, None, None, None, None, None]
     if up:
-      preds[0] = region_to_predict.deep_cast[E2]()
+      preds[0] = region_to_predict.shallow_cast[E2]()
       H264Intra4x4.vertical(preds[0], ref_colocated)
       if up_right:
-        preds[3] = region_to_predict.deep_cast[E2]()
+        preds[3] = region_to_predict.shallow_cast[E2]()
         H264Intra4x4.diag_down_left(preds[3], ref_colocated)
-        preds[7] = region_to_predict.deep_cast[E2]()
+        preds[7] = region_to_predict.shallow_cast[E2]()
         H264Intra4x4.vertical_left(preds[7], ref_colocated)
     if left:
-      preds[1] = region_to_predict.deep_cast[E2]()
+      preds[1] = region_to_predict.shallow_cast[E2]()
       H264Intra4x4.horizontal(preds[1], ref_colocated)
-      preds[8] = region_to_predict.deep_cast[E2]()
+      preds[8] = region_to_predict.shallow_cast[E2]()
       H264Intra4x4.horizontal_up(preds[8], ref_colocated)
     if up and left:
       H264Intra4x4.DC_a(preds[2], ref_colocated)
       if up_left:
-        preds[4] = region_to_predict.deep_cast[E2]()
+        preds[4] = region_to_predict.shallow_cast[E2]()
         H264Intra4x4.diag_down_right(preds[4], ref_colocated)
-        preds[5] = region_to_predict.deep_cast[E2]()
+        preds[5] = region_to_predict.shallow_cast[E2]()
         H264Intra4x4.vertical_right(preds[5], ref_colocated)
-        preds[6] = region_to_predict.deep_cast[E2]()
+        preds[6] = region_to_predict.shallow_cast[E2]()
         H264Intra4x4.horizontal_down(preds[6], ref_colocated)
     elif left:
       H264Intra4x4.DC_b(preds[2], ref_colocated)

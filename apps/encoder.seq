@@ -19,9 +19,9 @@ Y_frame = Block.make[byte](frame_height, frame_width)
 Cb_frame = Block.make[byte](chroma_height, chroma_width) if chroma_format != SAMPLE_MONO else None
 Cr_frame = Block.make[byte](chroma_height, chroma_width) if chroma_format != SAMPLE_MONO else None
 # Buffers to hold a single frame of reconstructed data (and changes the dtype)
-Y_frame_recons = Y_frame.deep_cast[int]()
-Cb_frame_recons = Cb_frame.deep_cast[int]() if chroma_format != SAMPLE_MONO else None
-Cr_frame_recons = Cr_frame.deep_cast[int]() if chroma_format != SAMPLE_MONO else None
+Y_frame_recons = Y_frame.shallow_cast[int]()
+Cb_frame_recons = Cb_frame.shallow_cast[int]() if chroma_format != SAMPLE_MONO else None
+Cr_frame_recons = Cr_frame.shallow_cast[int]() if chroma_format != SAMPLE_MONO else None
 
 # FlagTrees for various things
 mb_type_info = FlagTree(SLICE_UNKNOWN, Y_frame)
