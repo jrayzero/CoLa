@@ -1188,15 +1188,6 @@ class float:
 
 class BlockOps:
 
-#  def cast[E2](obj):
-#    """
-#    Do a deep cast of obj (which should be a Block or View)
-#    """
-#    obj2 = obj.shallow_cast[E2]()
-#    for n in range(obj.nunits()):
-#      obj2[n] = E2(obj(n))
-#    return obj2
-
   def floor(obj):
     """
     floor elements of obj (which should be a Block or View)
@@ -1257,6 +1248,19 @@ class Multidim[E,T,C]:
       res[n] = self(n) * other
     return res
 
+  def __mod__(self, other: Multidim[int,T,C]):
+    if self.dims() != other.dims():
+      raise ColaError()
+    res = Multidim[E,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = self(n) % other(n)
+    return res
+  def __mod__(self, other: int):
+    res = Multidim[E,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = self(n) % other
+    return res
+
   def __floordiv__(self, other: Multidim[E,T,C]):
     if self.dims() != other.dims():
       raise ColaError()
@@ -1310,6 +1314,24 @@ class Multidim[E,T,C]:
       res[n] = self(n) >> other
     return res    
 
+  def __abs__(self):
+    res = Multidim[E,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = abs(self(n))
+    return res
+
+  def __neg__(self):
+    res = Multidim[E,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = -self(n)
+    return res
+
+  def __invert__(self):
+    res = Multidim[E,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = ~self(n)
+    return res
+
 @extend
 class Block[E,T,C]:
 
@@ -1333,6 +1355,13 @@ class Block[E,T,C]:
     return Block(self.base * other.base)
   def __mul__(self, other: E) -> Block[E,T,C]:
     return Block(self.base * other)
+
+  def __mod__(self, other: Block[int,T,C]) -> Block[int,T,C]:
+    return Block(self.base % other.base)
+  def __mod__(self, other: View[int,T,C]) -> Block[int,T,C]:
+    return Block(self.base % other.base)
+  def __mod__(self, other: int) -> Block[int,T,C]:
+    return Block(self.base % other)
 
   def __floordiv__(self, other: Block[E,T,C]) -> Block[int,T,C]:
     return Block(self.base // other.base)
@@ -1362,6 +1391,15 @@ class Block[E,T,C]:
   def __rshift__(self: Block[E,T,C], other: int) -> Block[int,T,C]:
     return Block(self.base >> other)
 
+  def __abs__(self) -> Block[E,T,C]:
+    return Block(abs(self.base))
+
+  def __neg__(self) -> Block[E,T,C]:
+    return Block(self.base.__neg__())
+
+  def __invert__(self) -> Block[E,T,C]:
+    return Block(~self.base)
+
 @extend
 class View[E,T,C]:
 
@@ -1385,6 +1423,13 @@ class View[E,T,C]:
     return Block(self.base * other.base)
   def __mul__(self, other: E) -> Block[E,T,C]:
     return Block(self.base * other)
+
+  def __mod__(self, other: Block[int,T,C]) -> Block[int,T,C]:
+    return Block(self.base % other.base)
+  def __mod__(self, other: View[int,T,C]) -> Block[int,T,C]:
+    return Block(self.base % other.base)
+  def __mod__(self, other: int) -> Block[int,T,C]:
+    return Block(self.base % other)
 
   def __floordiv__(self, other: Block[E,T,C]) -> Block[int,T,C]:
     return Block(self.base // other.base)
@@ -1413,6 +1458,15 @@ class View[E,T,C]:
     return Block(self.base >> other.base)
   def __rshift__(self: View[E,T,C], other: int) -> Block[int,T,C]:
     return Block(self.base >> other)
+
+  def __abs__(self) -> Block[E,T,C]:
+    return Block(abs(self.base))
+
+  def __neg__(self) -> Block[E,T,C]:
+    return Block(self.base.__neg__())
+
+  def __invert__(self) -> Block[E,T,C]:
+    return Block(~self.base)
 
 ### Some useful extensions
 
