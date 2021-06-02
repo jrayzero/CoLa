@@ -1,15 +1,34 @@
 from ..cola.frontend.arg_parse import *
 import basic_io
 import sys
+import transforms
+import quantize
 
 parser = ArgParse()
 parser.register('prefix_path', ArgOpt().set_any_str(), '', 'Path to prepend on to any relative paths used for data access.')
-parser.register('no_basic_io', ArgOpt().set_any_bool(), False, 'If true, do no test basic_io.seq')
+parser.register('no_basic_io', ArgOpt().set_any_bool(), False, 'If true, do not test basic_io.seq')
+parser.register('no_transforms', ArgOpt().set_any_bool(), False, 'If true, do not test transforms.seq')
+parser.register('no_quantize', ArgOpt().set_any_bool(), False, 'If true, do not test quantize.seq')
+parser.register('one_test', ArgOpt().set_any_bool(), False, 'If true, only run one specified test')
+parser.register('quantize', ArgOpt().set_any_bool(), False, 'If true and one_test==true, test quantize.seq')
+parser.register('transforms', ArgOpt().set_any_bool(), False, 'If true and one_test==true, test transforms.seq')
 parser.parse(sys.argv[1:])
 
 prefix_path = parser['prefix_path'].to_str()
 if prefix_path != '':
   prefix_path += '/'
 
-if not parser['no_basic_io']:  
-  basic_io.do_test(prefix_path)
+if parser['one_test']:
+  if parser['quantize']:
+    quantize.do_test()
+  elif parser['transforms']:
+    transforms.do_test()
+  else:
+    raise ArgError('Must specify test to run when \'one_test\' specified.')
+else:
+  if not parser['no_basic_io']:
+    basic_io.do_test(prefix_path)
+  if not parser['no_transforms']:
+    transforms.do_test()
+  if not parser['no_quantize']:
+    quantize.do_test()

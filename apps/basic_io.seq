@@ -132,7 +132,7 @@ class YUV:
     V_frame.write(fd, bit_depth // 8, total_elems_Y)
     
 def do_test(prefix_path: str):
-  print('testing basic_io.seq')
+  print 'Running basic_io.seq tests'
   raw_420 = open(prefix_path + 'test_files/planar/foreman.qcif.3.420.yuv', 'rb')
   raw_422 = open(prefix_path + 'test_files/planar/foreman.qcif.3.422.yuv', 'rb')
   raw_444 = open(prefix_path + 'test_files/planar/foreman.qcif.3.444.yuv', 'rb')

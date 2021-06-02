@@ -227,7 +227,7 @@ class DCT:
       in_col[2] = p1 - p2
       in_col[3] = p0 - p3
 
-  def core_dct_8x8(inp):
+  def core_8x8_transform(inp):
     """
     Splits into 4x4 blocks and runs 4x4 transform on each.
     """
@@ -408,3 +408,52 @@ class DCT:
       in_col[5] = b4 - b3
       in_col[6] = b2 + b5
       in_col[7] = b0 - b7
+
+def do_test():
+  print 'Running transforms.seq tests'
+  blk4x4 = Block.make[int](4,4)
+  blk4x4[0] = 58
+  blk4x4[1] = 64
+  blk4x4[2] = 51
+  blk4x4[3] = 58
+  blk4x4[4] = 52
+  blk4x4[5] = 64
+  blk4x4[6] = 56
+  blk4x4[7] = 66
+  blk4x4[8] = 62
+  blk4x4[9] = 63
+  blk4x4[10] = 61
+  blk4x4[11] = 64
+  blk4x4[12] = 59
+  blk4x4[13] = 51
+  blk4x4[14] = 63
+  blk4x4[15] = 69
+
+  @test
+  def t0():
+    xform = DCT.core_4x4_transform(blk4x4)
+    assert xform == [961, -41, 15, -48, -34, 72, -30, -104, -15, 3, 15, 24, 13, 81, -5, 8]
+  t0()
+  
+  blk8x8 = Block.make((8,8), 
+                      [58, 64, 51, 58, 52, 64, 56, 66,
+                       62, 63, 61, 64, 59, 51, 63, 69,
+                       58, 64, 51, 58, 52, 64, 56, 66,
+                       62, 63, 61, 64, 59, 51, 63, 69,
+                       58, 64, 51, 58, 52, 64, 56, 66,
+                       62, 63, 61, 64, 59, 51, 63, 69,
+                       58, 64, 51, 58, 52, 64, 56, 66,
+                       62, 63, 61, 64, 59, 51, 63, 69,
+                      ])
+  @test
+  def t1():
+    xform = DCT.core_8x8_transform(blk8x8)
+    assert xform == [3844,-48,124,-104,60,-40,-32,-132,
+                     -15,-5,0,18,-12,-13,7,-24,
+                     0,0,0,0,0,0,0,0,
+                     -20,-7,1,26,-15,-18,10,-32,
+                     0,0,0,0,0,0,0,0,
+                     -31,-11,2,42,-23,-27,17,-50,
+                     0,0,0,0,0,0,0,0,
+                     -89,-31,4,116,-66,-78,46,-143]
+  t1()
