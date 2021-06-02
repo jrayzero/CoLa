@@ -1313,4 +1313,4 @@ def run_tests():
     assert sblk['macroblock'] == blk
   t10()
     
-run_tests()
+#run_tests()

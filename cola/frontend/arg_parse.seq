@@ -1,5 +1,7 @@
 import sys
 
+# TODO allow specifying dependencies between arguments. Like, if you specify this you can't also specify that, etc
+
 ARG_INVALID = -1
 ARG_INT = 0
 ARG_FLOAT = 1
@@ -360,7 +362,7 @@ class ArgParse:
     else:
       if debug_info != '':
         self.arg_debug[name] = debug_info
-    self.arg_defaults[name] = ParsedArg(~default_val)
+    self.arg_defaults[name] = ParsedArg(default_val)
 
   def register[T](self, name, opts, default_val: T, debug_info: str = ''):
     for opt in opts:
@@ -372,7 +374,7 @@ class ArgParse:
       else:
         if debug_info != '':
           self.arg_debug[name] = debug_info
-      self.arg_defaults[name] = ParsedArg(~default_val)
+      self.arg_defaults[name] = ParsedArg(default_val)
 
   def register(self, name, opt: ArgOpt, debug_info: str = ''):
     if name not in self.arg_opts:
