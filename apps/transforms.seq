@@ -157,6 +157,16 @@ class DCT:
       DCT.dct4x4(i,o)
     return out
 
+  def core_4x4_itransform(inp):
+    """
+    Splits into 4x4 blocks and runs 4x4 inverse transform on each.
+    """
+    out = Block(inp)
+    inp_split,out_split = Partition.grid(inp,4),Partition.grid(out,4)
+    for i,o in scan(inp_split,out_split):
+      DCT.idct4x4(i,o)
+    return out
+
   def dct4x4(inp, out):
     if staticlen(inp.dims()) != 2:
       raise ColaError()
@@ -192,7 +202,7 @@ class DCT:
       in_col[2] = t0 - t1
       in_col[3] = t3 - (t2 << 1)
 
-  def inverse4x4(inp, out):
+  def idct4x4(inp, out):
     if staticlen(inp.dims()) != 2:
       raise ColaError()
     # horizontal
@@ -323,7 +333,7 @@ class DCT:
       in_col[6] = (b2 >> 1) - b3
       in_col[7] = (b4 >> 2) - b7
 
-  def inverse8x8(inp, out):
+  def idct8x8(inp, out):
     if staticlen(inp.dims()) != 2:
       raise ColaError()
     # Horizontal  

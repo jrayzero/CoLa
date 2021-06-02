@@ -1,14 +1,22 @@
 from ..cola.frontend.lut import *
 from ..cola.frontend.block import *
+from transforms import DCT
 import math
 
 # TODO adaptive rounding
 
-class Quantize:
+# TODO I'm thinking "scaling factor matrix S" in the book may be the scaling list thing
+# mentioned in the standard
 
-  # TODO either add a "lookup_table" tag, or see if can have class variable 
-  # attached to Quantize, so can do Quantize.mf4 or something. This is just a 
-  # constant lookup table! 
+# Note to self: like everything else, the standard just has the decoder information
+# and gives a big "eff you" when figuring out the encoder. So I don't totally
+# understand how you can figure out the core forward transforms from the standard 
+# (i.e. figure out compatible transforms), but w/e. I just follow the book largely
+# for these.
+
+class H264Quantize4x4:
+
+
   def m4x4():
     """
     See Table 7.4 in Richardson's book
@@ -20,33 +28,73 @@ class Quantize:
                 9362, 3647, 5825,
                 8192, 3355, 5243,
                 7282, 2893, 4559])
-  
-  # For the MfN matrices, the 2x2 (Mf4) and 4x4 (Mf8) quadrants are all the same, so 
-  # we could make a smaller lookup table. But they aren't very big anyway, so oh well
+
+  def v4x4():
+    """
+    Standard table 8-315 (section 8.5.9)
+    """
+    return LUT((6,3),
+               [10, 16, 13,
+                11, 18, 14,
+                13, 20, 16,
+                14, 23, 18,
+                16, 25, 20,
+                18, 29, 23])
+
+  def Vi4(QP: int):
+    """
+    See 7.15 in Richardson's book (pg 189)
+    """
+    v = H264Quantize4x4.v4x4()
+    mod = QP % 6
+    return LUT((4,4),
+               [v(mod,0), v(mod,2), v(mod,0), v(mod,2),
+                v(mod,2), v(mod,1), v(mod,2), v(mod,1),
+                v(mod,0), v(mod,2), v(mod,0), v(mod,2),
+                v(mod,2), v(mod,1), v(mod,2), v(mod,1)])  
 
   def Mf4(QP: int):
     """
     See page 194 in Richardson's book
     """
     mod = QP % 6
-    m = Quantize.m4x4()
+    m = H264Quantize4x4.m4x4()
     return LUT((4, 4),
                [m(mod,0), m(mod,2), m(mod,0), m(mod,2),
                 m(mod,2), m(mod,1), m(mod,2), m(mod,1),
                 m(mod,0), m(mod,2), m(mod,0), m(mod,2),
                 m(mod,2), m(mod,1), m(mod,2), m(mod,1)])
 
-  def quantize_4x4(coeffs, QP: int):
+  def quantize(coeffs, QP: int):
     """
     See page 195 in Richardson's book (except I don't use adaptive rounding)
     """
-    Mf4 = Quantize.Mf4(QP)
-    tmp = float(Mf4 * coeffs)
-    q = int(BlockOps.round(tmp * (1/(2**(15+QP//6)))))
+    Mf4 = H264Quantize4x4.Mf4(QP)
+    q = (Mf4 * coeffs) >> (15+QP//6)
     return q
 
+  def xform_and_quant(vals, QP: int):
+    coeffs = DCT.core_4x4_transform(vals)
+    return H264Quantize4x4.quantize(coeffs, QP)
+
+  def dequantize(vals, QP: int):
+    """
+    See 7.2.3.6 in Richardson's book.
+    If you use this function and then run the output through the
+    core inverse transform, make sure to scale all the transform
+    outputs by 1/2^6 and then round the whole thing
+    """
+    v = H264Quantize4x4.Vi4(QP)
+    return (vals * v) << (QP//6)
+
+  def dequant_and_inv_xform(vals, QP: int):
+    dq = H264Quantize4x4.dequantize(vals, QP)
+    return DCT.core_4x4_itransform(dq) >> 6
+    
   # TODO I don't know if the stuff for 8x8 is correct, cause the book basically ignores
   # a bunch of the final details after telling you how to compute Mf8.
+
+class H264Quantize8x8:
 
   def v8x8():
     """
@@ -65,16 +113,16 @@ class Quantize:
     See second table on page 202 in Richardson's book
     """
     mod = QP % 6
-    v = Quantize.v8x8()
+    v = H264Quantize8x8.v8x8()
     return LUT((8,8), 
-               [v(mod,0),v(mod,3),v(mod,4),v(mod,3),v(mod,0),v(mod,3),v(mod,4),v(mod,3),
-                v(mod,3),v(mod,1),v(mod,5),v(mod,1),v(mod,3),v(mod,1),v(mod,5),v(mod,1),
-                v(mod,4),v(mod,5),v(mod,2),v(mod,5),v(mod,4),v(mod,5),v(mod,2),v(mod,5),
-                v(mod,3),v(mod,1),v(mod,5),v(mod,1),v(mod,3),v(mod,1),v(mod,5),v(mod,1),
-                v(mod,0),v(mod,3),v(mod,4),v(mod,3),v(mod,0),v(mod,3),v(mod,4),v(mod,3),
-                v(mod,3),v(mod,1),v(mod,5),v(mod,1),v(mod,3),v(mod,1),v(mod,5),v(mod,1),
-                v(mod,4),v(mod,5),v(mod,2),v(mod,5),v(mod,4),v(mod,5),v(mod,2),v(mod,5),
-                v(mod,3),v(mod,1),v(mod,5),v(mod,1),v(mod,3),v(mod,1),v(mod,5),v(mod,1)])
+               [v(mod,0)<<QP//6,v(mod,3)<<QP//6,v(mod,4)<<QP//6,v(mod,3)<<QP//6,v(mod,0)<<QP//6,v(mod,3)<<QP//6,v(mod,4)<<QP//6,v(mod,3)<<QP//6,
+                v(mod,3)<<QP//6,v(mod,1)<<QP//6,v(mod,5)<<QP//6,v(mod,1)<<QP//6,v(mod,3)<<QP//6,v(mod,1)<<QP//6,v(mod,5)<<QP//6,v(mod,1)<<QP//6,
+                v(mod,4)<<QP//6,v(mod,5)<<QP//6,v(mod,2)<<QP//6,v(mod,5)<<QP//6,v(mod,4)<<QP//6,v(mod,5)<<QP//6,v(mod,2)<<QP//6,v(mod,5)<<QP//6,
+                v(mod,3)<<QP//6,v(mod,1)<<QP//6,v(mod,5)<<QP//6,v(mod,1)<<QP//6,v(mod,3)<<QP//6,v(mod,1)<<QP//6,v(mod,5)<<QP//6,v(mod,1)<<QP//6,
+                v(mod,0)<<QP//6,v(mod,3)<<QP//6,v(mod,4)<<QP//6,v(mod,3)<<QP//6,v(mod,0)<<QP//6,v(mod,3)<<QP//6,v(mod,4)<<QP//6,v(mod,3)<<QP//6,
+                v(mod,3)<<QP//6,v(mod,1)<<QP//6,v(mod,5)<<QP//6,v(mod,1)<<QP//6,v(mod,3)<<QP//6,v(mod,1)<<QP//6,v(mod,5)<<QP//6,v(mod,1)<<QP//6,
+                v(mod,4)<<QP//6,v(mod,5)<<QP//6,v(mod,2)<<QP//6,v(mod,5)<<QP//6,v(mod,4)<<QP//6,v(mod,5)<<QP//6,v(mod,2)<<QP//6,v(mod,5)<<QP//6,
+                v(mod,3)<<QP//6,v(mod,1)<<QP//6,v(mod,5)<<QP//6,v(mod,1)<<QP//6,v(mod,3)<<QP//6,v(mod,1)<<QP//6,v(mod,5)<<QP//6,v(mod,1)<<QP//6])
 
   def Sf8():
     return LUT((8,8), 
@@ -101,19 +149,39 @@ class Quantize:
                ])
 
   def S8():
-    return Quantize.Si8() * Quantize.Sf8()
+    return H264Quantize8x8.Si8() * H264Quantize8x8.Sf8()
 
   def Mf8(QP: int):
-    Vi8 = Quantize.Vi8(QP)
-    Mf8 = Quantize.S8() * float(2**30) / float(Vi8)
+    Vi8 = H264Quantize8x8.Vi8(QP)
+    Mf8 = int(BlockOps.round(H264Quantize8x8.S8() * float(2**30))) // Vi8
     return Mf8
 
-  def quantize_8x8(coeffs, QP: int):
-    
-    Mf8 = int(BlockOps.round(Quantize.Mf8(QP)))
-    tmp = float(Mf8 * coeffs)
-    q = int(BlockOps.round(tmp * (1/(2**(22+QP//6)))))    
+  def estimate_Qstep(QP: int):
+    return float(H264Quantize8x8.Vi8(QP)) / (H264Quantize8x8.Si8()*float(2**8))
+
+  def quantize(coeffs, QP: int):    
+    Mf8 = H264Quantize8x8.Mf8(QP)
+    tmp = Mf8 * coeffs
+    q = tmp >> (22+QP//6)
     return q
+
+  def xform_and_quant(vals, QP: int):
+    coeffs = DCT.core_8x8_transform(vals)
+    return H264Quantize8x8.quantize(coeffs, QP)
+
+  def dequantize(vals, QP: int):
+    """
+    See 7.2.3.6 in Richardson's book.
+    If you use this function and then run the output through the
+    core inverse transform, make sure to scale all the transform
+    outputs by 1/2^6 and then round the whole thing
+    """
+    v = H264Quantize8x8.Vi8(QP)
+    return v * 2 ** (QP//6)
+
+  def dequant_and_inv_xform(vals, QP: int):
+    dq = H264Quantize4x4.dequantize(vals, QP)
+    return int(BlockOps.round(float(DCT.core_4x4_itransform(dq)) * (1/2**6)))
 
 def do_test():
   print 'Running quantize.seq tests'
@@ -138,14 +206,22 @@ def do_test():
   @test
   def t0():
     # qp = 6
-    quant = Quantize.quantize_4x4(blk4x4, 6)
-    assert quant == [192, -5, 3, -6, -4, 6, -4, -8, -3, 0, 3, 3, 2, 6, -1, 1]
+    quant = H264Quantize4x4.quantize(blk4x4, 6)
+    assert quant == [192, -6, 2, -6, -5, 5, -4, -9, -3, 0, 2, 2, 1, 6, -1, 0]
+    dequant = H264Quantize4x4.dequant_and_inv_xform(quant, 6)
+    assert dequant == [55, 64, 50, 58, 52, 63, 56, 66, 61, 62, 61, 63, 58, 51, 63, 68]
   t0()
   @test
   def t1():
+    assert H264Quantize8x8.estimate_Qstep(0)(0) == 0.625
+    assert H264Quantize8x8.estimate_Qstep(1)(0) == 0.6875
+    assert H264Quantize8x8.estimate_Qstep(2)(0) == 0.8125
+    assert H264Quantize8x8.estimate_Qstep(3)(0) == 0.875
+    assert H264Quantize8x8.estimate_Qstep(4)(0) == 1.0
+    assert H264Quantize8x8.estimate_Qstep(5)(0) == 1.125
     # qp = 18
-    quant = Quantize.quantize_4x4(blk4x4, 18)
-    assert quant == [48, -1, 1, -1, -1, 1, -1, -2, -1, 0, 1, 1, 0, 2, 0, 0]
+#    quant = H264Quantize8x8.quantize(blk4x4, 18)
+#    assert quant == [48, -1, 1, -1, -1, 1, -1, -2, -1, 0, 1, 1, 0, 2, 0, 0]
   t1()
   blk8x8 = Block.make((8,8), 
                       [961, -41, 15, -48, -34, 72, -30, -104,
@@ -160,7 +236,7 @@ def do_test():
   @test
   def t2():
     # qp = 2
-    quant = Quantize.quantize_8x8(blk8x8, 2)
+    quant = H264Quantize8x8.quantize(blk8x8, 2)
     assert quant == [2,0,0,0,0,0,0,0,
                      0,0,0,0,0,0,0,0,
                      3,0,0,-3,0,0,0,0,
@@ -169,4 +245,4 @@ def do_test():
                      0,0,0,8,0,0,0,0,
                      3,0,0,0,0,0,0,0,
                      0,0,0,0,0,0,0,0]
-  t2()
+#  t2()

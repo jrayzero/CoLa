@@ -1,0 +1,78 @@
+from ..cola.frontend.error import ColaError
+from constants import *
+
+"""
+Collection of functions to compute various flags and stuff defined in the standard.
+More relevant to decoder, but still useful for encoder. 
+"""
+
+class Flag:
+
+  def QPy(mb_qp_delta: int, QpBdOffsetY: int, QPy_prev: int):
+    return ((QPy_prev + mb_qp_delta + 52 + 2 * QpBdOffsetY) % (52 + QpBdOffsetY)) - QpBdOffsetY
+
+  # QPP -> QP'
+  def QPPy(QPy: int, QpBdOffsetY: int):
+    return QPy + QpBdOffsetY
+
+  # QPP -> QP'
+  def qP(is_luma: bool, sMbFlag: bool, QPPy: int, QSy: int, QPPc: int, QSc: int) -> int:
+    if is_luma and not sMbFlag:
+      return QPPy
+    elif is_luma and sMbFlag:
+      return QSy
+    elif not is_luma and not sMbFlag:
+      return QPPc
+    else:
+      return QSc
+
+  def sMbFlag(mb_type: int, is_inter_mb: bool) -> bool:
+    # True == 1
+    return True if  mb_type == SI_SLICE or (mb_type == SP_SLICE and is_inter_mb) else False
+
+  def iYCbCr(separate_colour_plane_flag: bool, colour_plane_id: int, \
+                     is_luma: bool, is_Cb: bool = False, is_Cr: bool = False) -> int:
+    """
+    Standard section 8.5.9
+    """
+    if separate_colour_plane_flag:
+      return colour_plane_id
+    else:
+      if is_luma:
+        return 0
+      elif is_Cb:
+        return 1
+      elif is_Cr:
+        return 2
+      else:
+        raise ColaError()      
+
+  def BitDepth(bit_depth_minus8:int = 0):
+    """
+    For luma: bit_depth_minus8 -> bit_depth_luma_minus8
+    For chroma: bit_depth_minus8 -> bit_depth_chroma_minus8
+    """
+    return 8 + bit_depth_minus8
+
+  def QpDbOffset(bit_depth_minus8:int = 0):
+    """
+    For luma: bit_depth_minus8 -> bit_depth_luma_minus8
+    For chroma: bit_depth_minus8 -> bit_depth_chroma_minus8
+    """
+    return 6 * bit_depth_minus8
+
+  def BitDepthY(bit_depth_luma_minus8:int = 0):
+    return Flag.BitDepth(bit_depth_luma_minus8)
+
+  def BitDepthC(bit_depth_chroma_minus8:int = 0):
+    return Flag.BitDepth(bit_depth_chroma_minus8)
+  
+  def QpDbOffsetY(bit_depth_luma_minus8:int = 0):
+    return Flag.QpDbOffset(bit_depth_luma_minus8)
+
+  def QpDbOffsetC(bit_depth_chroma_minus8:int = 0):
+    return Flag.QpDbOffset(bit_depth_chroma_minus8)
+
+  def RawMbBits(BitDepthY:int, MbWidthC:int, MbHeightC:int, BitDepthC:int):
+    256 * BitDepthY + 2 * MbWidthC * MbHeightC * BitDepthC
+  
