@@ -1,5 +1,8 @@
 from error import ColaError
 from block import *
+import math
+
+# TODO make this more like Multidim (i.e. _dims, _elems, _nunits, then getters for them)
 
 class LUT[E,T]:
   """
@@ -8,11 +11,18 @@ class LUT[E,T]:
 
   dims: T
   elems: list[E]
+  nunits: int
 
   def __init__(self, dims: T, elems: list[E]):
     for d in dims:
       if not isinstance(d, int):
         raise ColaError()
+    n = 1
+    for d in dims:
+      n *= d
+    if len(elems) != n:
+      raise ColaError(str(len(elems)) + ' ' + str(n))
+    self.nunits = n
     self.dims = dims
     self.elems = elems
 
@@ -45,6 +55,28 @@ class LUT[E,T]:
           s += str(self[y,x]) + ' '
         s += '\n'
       return s
+
+  def to_float(self) -> LUT[float, T]:
+    arr = Array[float](self.nunits)
+    for n in range(self.nunits):
+      arr[n] = float(self[n])
+    return LUT(self.dims, list(arr, self.nunits))    
+
+  def to_int(self) -> LUT[int, T]:
+    arr = Array[int](self.nunits)
+    for n in range(self.nunits):
+      arr[n] = int(self[n])
+    return LUT(self.dims, list(arr, self.nunits))    
+
+@extend 
+class int:
+  def __new__[E,T](what: LUT[E,T]):
+    return what.to_int()
+
+@extend 
+class float:
+  def __new__[E,T](what: LUT[E,T]):
+    return what.to_float()
 
 @extend
 class Multidim[E,T,C]:
@@ -117,3 +149,33 @@ class LUT[E,T]:
       res[n] = self(n) * other(n)
     return Block(res)
 
+  def __mul__(self, other: LUT[E,T]) -> LUT[E,T]:
+    if self.dims != other.dims:
+      raise ColaError()
+    arr = Array[E](self.nunits)
+    for n in range(self.nunits):
+      arr[n] = self[n] * other[n]
+    return LUT(self.dims, list(arr, self.nunits))
+
+  def __mul__(self, other: E) -> LUT[E,T]:
+    arr = Array[E](self.nunits)
+    for n in range(self.nunits):
+      arr[n] = self[n] * other
+    return LUT(self.dims, list(arr, self.nunits))
+
+  def __truediv__(self, other: LUT[E,T]) -> LUT[E,T]:
+    if self.dims != other.dims:
+      raise ColaError()
+    arr = Array[E](self.nunits)
+    for n in range(self.nunits):
+      arr[n] = self[n] / other[n]
+    return LUT(self.dims, list(arr, self.nunits))
+
+@extend 
+class BlockOps:
+
+  def round[E,T](obj: LUT[E,T], places: int=0):
+    arr = Array[E](obj.nunits)    
+    for n in range(obj.nunits):
+      arr[n] = math.round(obj(n), places)
+    return LUT(obj.dims, list(arr, obj.nunits))

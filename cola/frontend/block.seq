@@ -74,6 +74,26 @@ class Multidim[E,T,C]:
     self._is_root = True
     self._stored_relatives = {}
 
+  def __init__(self, dims: T, elems: list[E]):
+    """
+    Create a root Multidim from a set of dimensions and list of elems
+    (which should have all the data covered by the dims). Just
+    use this for debugging.
+    """    
+    self._dims = tuple(d for d in dims)
+    self._cgrid_mapping = tuple(ColaSlice(0,d,1) for d in dims)
+    self._nunits = mul_reduce(self._dims)
+    if self._nunits != len(elems):
+      raise ColaError('Inconsistent number of elements')
+    self._buffer_owner = self
+    self._buffer = Array[E](self.nunits())
+    for n in range(self._nunits):
+      self._buffer[n] = elems[n]
+    self._cgrid = CoordGrid[T]()
+    self._is_owner = True
+    self._is_root = True
+    self._stored_relatives = {}
+
   def __init__(self, dims: T):
     """
     Create a root Multidim from a set of dimensions
@@ -716,6 +736,18 @@ class Multidim[E,T,C]:
         return False
     return True
 
+  def to_int(self) -> Multidim[int,T,C]:
+    m = self.shallow_cast[int]()
+    for n in range(self.nunits()):
+      m[n] = int(self(n))
+    return m
+
+  def to_float(self) -> Multidim[float,T,C]:
+    m = self.shallow_cast[float]()
+    for n in range(self.nunits()):
+      m[n] = float(self(n))
+    return m
+
   # TODO operator === for this
   def loc_eq(self, other: Multidim[E,T,C]) -> bool:
     """
@@ -785,6 +817,11 @@ class Block[E,T,C]:
     T = typeof(make_int_tuple(d))
     C = typeof(make_cola_slice_tuple(d))
     return Block[E,T,C](*dims)
+
+  # This should really just be used for quick debugging
+  def make[E,T](dims: T, elems: list[E]):
+    C = typeof(make_cola_slice_tuple(dims))
+    return Block[E,T,C](dims, elems)
 
   def __init__(self, *dims):
     self.base = Multidim[E,T,C](*dims)
@@ -897,6 +934,18 @@ class Block[E,T,C]:
 
   def __ne__(self, val) -> bool:
     return not (self == val)
+
+  def to_int(self: Block[int,T,C]) -> Block[int,T,C]:
+    return self
+
+  def to_int(self: Block[E,T,C]) -> Block[int,T,C]:
+    return Block(self.base.to_int())
+
+  def to_float(self: Block[float,T,C]) -> Block[float,T,C]:
+    return self
+
+  def to_float(self: Block[E,T,C]) -> Block[float,T,C]:
+    return Block(self.base.to_float())
 
   def loc_eq(self, other: View[E,T,C]) -> bool:
     return self.base.loc_eq(other.base)
@@ -1052,6 +1101,18 @@ class View[E,T,C]:
   def __ne__(self, val) -> bool:
     return not (self == val)
 
+  def to_int(self: View[int,T,C]) -> View[int,T,C]:
+    return self
+
+  def to_int(self: View[E,T,C]) -> Block[int,T,C]:
+    return Block(self.base.to_int())
+
+  def to_float(self: View[float,T,C]) -> View[float,T,C]:
+    return self
+
+  def to_float(self: View[E,T,C]) -> Block[float,T,C]:
+    return Block(self.base.to_float())
+
   def loc_eq(self, other: View[E,T,C]) -> bool:
     return self.base.loc_eq(other.base)
 
@@ -1111,16 +1172,30 @@ class byte:
     %tmp = sub i64 %0, %other
     ret i64 %tmp
 
+@extend 
+class int:
+  def __new__[E,T,C](what: Block[E,T,C]):
+    return what.to_int()
+  def __new__[E,T,C](what: View[E,T,C]):
+    return what.to_int()
+
+@extend 
+class float:
+  def __new__[E,T,C](what: Block[E,T,C]):
+    return what.to_float()
+  def __new__[E,T,C](what: View[E,T,C]):
+    return what.to_float()
+
 class BlockOps:
 
-  def cast[E2](obj):
-    """
-    Do a deep cast of obj (which should be a Block or View)
-    """
-    obj2 = obj.shallow_cast[E2]()
-    for n in range(obj.nunits()):
-      obj2[n] = E2(obj(n))
-    return obj2
+#  def cast[E2](obj):
+#    """
+#    Do a deep cast of obj (which should be a Block or View)
+#    """
+#    obj2 = obj.shallow_cast[E2]()
+#    for n in range(obj.nunits()):
+#      obj2[n] = E2(obj(n))
+#    return obj2
 
   def floor(obj):
     """
