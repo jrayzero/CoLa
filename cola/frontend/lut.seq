@@ -171,6 +171,21 @@ class LUT[E,T]:
       arr[n] = self[n] / other[n]
     return LUT(self.dims, list(arr, self.nunits))
 
+  def __floordiv__(self, other: LUT[E,T]) -> LUT[E,T]:
+    if self.dims != other.dims:
+      raise ColaError()
+    arr = Array[E](self.nunits)
+    for n in range(self.nunits):
+      arr[n] = self[n] // other[n]
+    return LUT(self.dims, list(arr, self.nunits))
+
+  def __lshift__(self, other: E) -> LUT[E,T]:
+    arr = Array[E](self.nunits)
+    for n in range(self.nunits):
+      arr[n] = self[n] << other
+    return LUT(self.dims, list(arr, self.nunits))
+
+
 @extend 
 class BlockOps:
 

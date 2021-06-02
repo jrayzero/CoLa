@@ -1217,6 +1217,20 @@ class BlockOps:
 
 @extend 
 class Multidim[E,T,C]:
+
+  def __add__(self, other: Multidim[E,T,C]):
+    if self.dims() != other.dims():
+      raise ColaError()
+    res = Multidim[E,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = self(n) + other(n)
+    return res
+  def __add__(self, other: E):
+    res = Multidim[E,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = self(n) + other
+    return res
+
   def __sub__(self, other: Multidim[E,T,C]):
     if self.dims() != other.dims():
       raise ColaError()
@@ -1224,30 +1238,181 @@ class Multidim[E,T,C]:
     for n in range(self.nunits()):
       res[n] = self(n) - other(n)
     return res
+  def __sub__(self, other: E):
+    res = Multidim[E,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = self(n) - other
+    return res
+
+  def __mul__(self, other: Multidim[E,T,C]):
+    if self.dims() != other.dims():
+      raise ColaError()
+    res = Multidim[E,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = self(n) * other(n)
+    return res
   def __mul__(self, other: E):
     res = Multidim[E,T,C](self.dims())
     for n in range(self.nunits()):
       res[n] = self(n) * other
     return res
 
+  def __floordiv__(self, other: Multidim[E,T,C]):
+    if self.dims() != other.dims():
+      raise ColaError()
+    res = Multidim[int,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = self(n) // other(n)
+    return res
+  def __floordiv__(self, other: E):
+    res = Multidim[int,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = self(n) // other
+    return res
+
+  def __truediv__(self, other: Multidim[E,T,C]):
+    if self.dims() != other.dims():
+      raise ColaError()
+    res = Multidim[float,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = self(n) / other(n)
+    return res
+  def __truediv__(self, other: E):
+    res = Multidim[float,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = self(n) / other
+    return res
+  
+  # TODO once I can specified self: Multidim[int,T,C], do that
+  def __lshift__(self: Multidim[E,T,C], other: Multidim[int,T,C]):
+    if self.dims() != other.dims():
+      raise ColaError()
+    res = Multidim[E,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = self(n) << other(n)
+    return res
+  def __lshift__(self: Multidim[E,T,C], other: int):
+    res = Multidim[int,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = self(n) << other
+    return res    
+
+  def __rshift__(self: Multidim[E,T,C], other: Multidim[int,T,C]):
+    if self.dims() != other.dims():
+      raise ColaError()
+    res = Multidim[int,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = self(n) >> other(n)
+    return res
+  def __rshift__(self: Multidim[E,T,C], other: int):
+    res = Multidim[int,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = self(n) >> other
+    return res    
+
 @extend
 class Block[E,T,C]:
+
+  def __add__(self, other: Block[E,T,C]) -> Block[E,T,C]:
+    return Block(self.base + other.base)
+  def __add__(self, other: View[E,T,C]) -> Block[E,T,C]:
+    return Block(self.base + other.base)
+  def __add__(self, other: E) -> Block[E,T,C]:
+    return Block(self.base + other)
+
   def __sub__(self, other: Block[E,T,C]) -> Block[E,T,C]:
     return Block(self.base - other.base)
-
   def __sub__(self, other: View[E,T,C]) -> Block[E,T,C]:
     return Block(self.base - other.base)
+  def __sub__(self, other: E) -> Block[E,T,C]:
+    return Block(self.base - other)
 
+  def __mul__(self, other: Block[E,T,C]) -> Block[E,T,C]:
+    return Block(self.base * other.base)
+  def __mul__(self, other: View[E,T,C]) -> Block[E,T,C]:
+    return Block(self.base * other.base)
   def __mul__(self, other: E) -> Block[E,T,C]:
     return Block(self.base * other)
 
+  def __floordiv__(self, other: Block[E,T,C]) -> Block[int,T,C]:
+    return Block(self.base // other.base)
+  def __floordiv__(self, other: View[E,T,C]) -> Block[int,T,C]:
+    return Block(self.base // other.base)
+  def __floordiv__(self, other: E) -> Block[int,T,C]:
+    return Block(self.base // other)
+
+  def __truediv__(self, other: Block[E,T,C]) -> Block[float,T,C]:
+    return Block(self.base // other.base)
+  def __truediv__(self, other: View[E,T,C]) -> Block[float,T,C]:
+    return Block(self.base // other.base)
+  def __truediv__(self, other: E) -> Block[float,T,C]:
+    return Block(self.base // other)
+
+  def __lshift__(self: Block[E,T,C], other: Block[int,T,C]) -> Block[int,T,C]:
+    return Block(self.base << other.base)
+  def __lshift__(self: Block[E,T,C], other: View[int,T,C]) -> Block[int,T,C]:
+    return Block(self.base << other.base)
+  def __lshift__(self: Block[E,T,C], other: int) -> Block[int,T,C]:
+    return Block(self.base << other)
+
+  def __rshift__(self: Block[E,T,C], other: Block[int,T,C]) -> Block[int,T,C]:
+    return Block(self.base >> other.base)
+  def __rshift__(self: Block[E,T,C], other: View[int,T,C]) -> Block[int,T,C]:
+    return Block(self.base >> other.base)
+  def __rshift__(self: Block[E,T,C], other: int) -> Block[int,T,C]:
+    return Block(self.base >> other)
+
 @extend
 class View[E,T,C]:
+
+  def __add__(self, other: Block[E,T,C]) -> Block[E,T,C]:
+    return Block(self.base + other.base)
+  def __add__(self, other: View[E,T,C]) -> Block[E,T,C]:
+    return Block(self.base + other.base)
+  def __add__(self, other: E) -> Block[E,T,C]:
+    return Block(self.base + other)
+
   def __sub__(self, other: Block[E,T,C]) -> Block[E,T,C]:
     return Block(self.base - other.base)
-
   def __sub__(self, other: View[E,T,C]) -> Block[E,T,C]:
     return Block(self.base - other.base)
+  def __sub__(self, other: E) -> Block[E,T,C]:
+    return Block(self.base - other)
+
+  def __mul__(self, other: Block[E,T,C]) -> Block[E,T,C]:
+    return Block(self.base * other.base)
+  def __mul__(self, other: View[E,T,C]) -> Block[E,T,C]:
+    return Block(self.base * other.base)
+  def __mul__(self, other: E) -> Block[E,T,C]:
+    return Block(self.base * other)
+
+  def __floordiv__(self, other: Block[E,T,C]) -> Block[int,T,C]:
+    return Block(self.base // other.base)
+  def __floordiv__(self, other: View[E,T,C]) -> Block[int,T,C]:
+    return Block(self.base // other.base)
+  def __floordiv__(self, other: E) -> Block[int,T,C]:
+    return Block(self.base // other)
+
+  def __truediv__(self, other: Block[E,T,C]) -> Block[float,T,C]:
+    return Block(self.base // other.base)
+  def __truediv__(self, other: View[E,T,C]) -> Block[float,T,C]:
+    return Block(self.base // other.base)
+  def __truediv__(self, other: E) -> Block[float,T,C]:
+    return Block(self.base // other)
+
+  def __lshift__(self: View[E,T,C], other: Block[int,T,C]) -> Block[int,T,C]:
+    return Block(self.base << other.base)
+  def __lshift__(self: View[E,T,C], other: View[int,T,C]) -> Block[int,T,C]:
+    return Block(self.base << other.base)
+  def __lshift__(self: View[E,T,C], other: int) -> Block[int,T,C]:
+    return Block(self.base << other)
+
+  def __rshift__(self: View[E,T,C], other: Block[int,T,C]) -> Block[int,T,C]:
+    return Block(self.base >> other.base)
+  def __rshift__(self: View[E,T,C], other: View[int,T,C]) -> Block[int,T,C]:
+    return Block(self.base >> other.base)
+  def __rshift__(self: View[E,T,C], other: int) -> Block[int,T,C]:
+    return Block(self.base >> other)
 
 ### Some useful extensions
 
