@@ -2,6 +2,7 @@ from error import *
 from slice import *
 from tuple_opts import *
 import random,string
+import math
 
 # TODO one thing I need to do is better explain the different scenarios for indexing. e.g. don't specify lower bound? it is set to 0.
 # don't specify upper bound? set to dim sz, so be careful if you go out-of-bounds
@@ -136,9 +137,9 @@ class Multidim[E,T,C]:
     self._stored_relatives = {}    
                
 
-  def deep_cast[E2](self) -> Multidim[E2,T,C]:
+  def shallow_cast[E2](self) -> Multidim[E2,T,C]:
     """
-    See Block.deep_cast
+    See Block.shallow_cast
     """
     return Multidim[E2,T,C](self._cgrid_mapping, self._cgrid, self._dims, self._nunits)
     
@@ -267,26 +268,26 @@ class Multidim[E,T,C]:
       raise ColaError('cgrids don\'t match')
     return Multidim._do_fully_contained[C](self._cgrid_mapping, other)
   
-  def _do_linearize(coord, dims) -> int:
+  def do_linearize(coord, dims) -> int:
     if staticlen(coord) == 0:
       return 0
     else:
       mul = coord[0] * mul_reduce(dims[1:])
-      return mul + Multidim._do_linearize(coord[1:], dims[1:])
+      return mul + Multidim.do_linearize(coord[1:], dims[1:])
 
-  def _do_delinearize(lidx: int, dims):
+  def do_delinearize(lidx: int, dims):
     if staticlen(dims) == 0:
       return (lidx,)
     else:
       mul = mul_reduce(dims)
       c = lidx // mul
-      return (c,) + Multidim._do_delinearize(lidx % mul, dims[1:])
+      return (c,) + Multidim.do_delinearize(lidx % mul, dims[1:])
 
   def _linearize(self, coord: T) -> int:
     """
     Return the linearization of coord relative to self.
     """
-    return Multidim._do_linearize(coord, self._dims)
+    return Multidim.do_linearize(coord, self._dims)
 
   def _delinearize(self, lidx: int) -> T:
     """
@@ -295,7 +296,7 @@ class Multidim[E,T,C]:
     if staticlen(self._dims) == 1:
       return (lidx,)
     else:
-      return Multidim._do_delinearize(lidx, self._dims[1:])
+      return Multidim.do_delinearize(lidx, self._dims[1:])
 
   # TODO: bool generics
   def remap_local_lidx_to_buffer_lidx[B:int](self, local_lidx: int):
@@ -797,11 +798,11 @@ class Block[E,T,C]:
   def __init__(self, other: Multidim[E,T,C]):
     self.base = other
   
-  def deep_cast[E2](self) -> Block[E2,T,C]:
+  def shallow_cast[E2](self) -> Block[E2,T,C]:
     """
     Creates a new Block with same dimensions and mappings as self, but with a different element type (E2)
     """
-    return Block(self.base.deep_cast[E2]())
+    return Block(self.base.shallow_cast[E2]())
 
   def dims(self) -> T:
     return self.base.dims()
@@ -939,11 +940,12 @@ class View[E,T,C]:
   def __init__(self, other: Multidim[E,T,C]):
     self.base = other
 
-  def deep_cast[E2](self) -> Block[E2,T,C]:
+  def shallow_cast[E2](self) -> Block[E2,T,C]:
     """
-    Creates a new Block with same dimensions and mappings as self, but with a different element type (E2)
+    Creates a new Block with same dimensions and mappings as self, but with a different element type (E2).
+    Doesn't copy over the elements
     """
-    return Block(self.base.deep_cast[E2]())
+    return Block(self.base.shallow_cast[E2]())
 
   def dims(self) -> T:
     return self.base.dims()
@@ -1109,45 +1111,67 @@ class byte:
     %tmp = sub i64 %0, %other
     ret i64 %tmp
 
-class Casts:
+class BlockOps:
 
-  def cast(a: byte, b: int):
-    return int(a),b
+  def cast[E2](obj):
+    """
+    Do a deep cast of obj (which should be a Block or View)
+    """
+    obj2 = obj.shallow_cast[E2]()
+    for n in range(obj.nunits()):
+      obj2[n] = E2(obj(n))
+    return obj2
 
-  def cast(a: int, b: byte):
-    return a,int(b)
+  def floor(obj):
+    """
+    floor elements of obj (which should be a Block or View)
+    """
+    obj2 = obj.shallow_cast[float]()
+    for n in range(obj.nunits()):
+      obj2[n] = math.floor(obj(n))
+    return obj2  
 
-  def cast(a: int, b: int):
-    return a,b
-
-  def cast(a: byte, b: byte):
-    return a,b
+  def round(obj,places:int=0):
+    """
+    floor elements of obj (which should be a Block or View)
+    """
+    obj2 = obj.shallow_cast[float]()
+    for n in range(obj.nunits()):
+      obj2[n] = math.round(obj(n), places)
+    return obj2  
 
 @extend 
 class Multidim[E,T,C]:
-  def __sub__[E2](self, other: Multidim[E2,T,C]):
+  def __sub__(self, other: Multidim[E,T,C]):
     if self.dims() != other.dims():
       raise ColaError()
-    res = Multidim[E2,T,C](self.dims())
+    res = Multidim[E,T,C](self.dims())
     for n in range(self.nunits()):
-      a,b = Casts.cast(self(n),other(n))
-      res[n] = a - b
+      res[n] = self(n) - other(n)
+    return res
+  def __mul__(self, other: E):
+    res = Multidim[E,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = self(n) * other
     return res
 
 @extend
 class Block[E,T,C]:
-  def __sub__[E2](self, other: Block[E2,T,C]) -> Block[E2,T,C]:
+  def __sub__(self, other: Block[E,T,C]) -> Block[E,T,C]:
     return Block(self.base - other.base)
 
-  def __sub__[E2](self, other: View[E2,T,C]) -> Block[E2,T,C]:
+  def __sub__(self, other: View[E,T,C]) -> Block[E,T,C]:
     return Block(self.base - other.base)
+
+  def __mul__(self, other: E) -> Block[E,T,C]:
+    return Block(self.base * other)
 
 @extend
 class View[E,T,C]:
-  def __sub__[E2](self, other: Block[E2,T,C]) -> Block[E2,T,C]:
+  def __sub__(self, other: Block[E,T,C]) -> Block[E,T,C]:
     return Block(self.base - other.base)
 
-  def __sub__[E2](self, other: View[E2,T,C]) -> Block[E2,T,C]:
+  def __sub__(self, other: View[E,T,C]) -> Block[E,T,C]:
     return Block(self.base - other.base)
 
 ### Some useful extensions

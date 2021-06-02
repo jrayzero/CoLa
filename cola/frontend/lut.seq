@@ -1,0 +1,119 @@
+from error import ColaError
+from block import *
+
+class LUT[E,T]:
+  """
+  A constant lookup table (you can't modify it)
+  """
+
+  dims: T
+  elems: list[E]
+
+  def __init__(self, dims: T, elems: list[E]):
+    for d in dims:
+      if not isinstance(d, int):
+        raise ColaError()
+    self.dims = dims
+    self.elems = elems
+
+  def __getitem__(self, idx: int) -> E:
+    # linear idx
+    return self.elems[idx]
+
+  def __call__(self, idx: int) -> E:
+    # linear idx
+    return self.elems[idx]
+
+  def __getitem__(self, idxs) -> E:
+    if staticlen(idxs) != staticlen(self.dims):
+      raise ColaError()
+    l = Multidim.do_linearize(idxs, self.dims)
+    return self.elems[l]
+
+  def __call__(self, *idxs) -> E:
+    return self[tuple(idx for idx in idxs)]
+
+  def __str__(self) -> str:
+    if staticlen(self.dims) > 2:
+      return '' # not currently supported
+    if staticlen(self.dims) == 1:
+      return '[' + ','.join(self.elems) + ']'
+    elif staticlen(self.dims) == 2:
+      s = ''
+      for y in range(self.dims[0]):
+        for x in range(self.dims[1]):
+          s += str(self[y,x]) + ' '
+        s += '\n'
+      return s
+
+@extend
+class Multidim[E,T,C]:
+  def __sub__(self, other: LUT[E,T]) -> Multidim[E,T,C]:
+    if self.dims() != other.dims:
+      raise ColaError()
+    res = Multidim[E,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = self(n) - other(n)
+    return res
+
+  def __mul__(self, other: LUT[E,T]) -> Multidim[E,T,C]:
+    if self.dims() != other.dims:
+      raise ColaError()
+    res = Multidim[E,T,C](self.dims())
+    for n in range(self.nunits()):
+      res[n] = self(n) * other(n)
+    return res
+
+@extend
+class Block[E,T,C]:
+
+  def __sub__(self, other: LUT[E,T]) -> Block[E,T,C]:
+    return Block(self.base - other)
+
+  def __mul__(self, other: LUT[E,T]) -> Block[E,T,C]:
+    return Block(self.base * other)
+
+@extend
+class View[E,T,C]:
+
+  def __sub__(self, other: LUT[E,T]) -> Block[E,T,C]:
+    return Block(self.base - other)
+
+  def __mul__(self, other: LUT[E,T]) -> Block[E,T,C]:
+    return Block(self.base * other)
+
+@extend
+class LUT[E,T]:
+  
+  def __sub__[E,T,C](self, other: Block[E,T,C]) -> Block[E,T,C]:
+    if self.dims != other.dims():
+      raise ColaError()
+    res = Multidim[E,T,C](self.dims())
+    for n in range(other.nunits()):
+      res[n] = self(n) - other(n)
+    return Block(res)
+
+  def __sub__[E,T,C](self, other: View[E,T,C]) -> Block[E,T,C]:
+    if self.dims != other.dims():
+      raise ColaError()
+    res = Multidim[E,T,C](self.dims())
+    for n in range(other.nunits()):
+      res[n] = self(n) - other(n)
+    return Block(res)
+
+  def __mul__[E,T,C](self, other: Block[E,T,C]) -> Block[E,T,C]:
+    if self.dims != other.dims():
+      raise ColaError()
+    res = Multidim[E,T,C](self.dims)
+    for n in range(other.nunits()):
+      res[n] = self(n) * other(n)
+    return Block(res)
+
+  def __mul__[E,T,C](self, other: View[E,T,C]) -> Block[E,T,C]:
+    if self.dims != other.dims():
+      raise ColaError()
+    res = Multidim[E,T,C](self.dims)
+    for n in range(other.nunits()):
+      res[n] = self(n) * other(n)
+    return Block(res)
+
