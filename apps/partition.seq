@@ -1,5 +1,7 @@
 from ..cola.frontend.ptree import *
 
+# LIBRARY
+
 # TODO use shorthand notation once available in Codon
 
 class Partition:

@@ -22,6 +22,7 @@ class EncoderCommandLineParser:
     self.parser.register('frame_width', ArgOpt.set_int_bound(0,None), debug_info = 'Frame width')
     self.parser.register('bit_depth', ArgOpt.create_options(8), debug_info = 'Bit depth of raw_input')
     self.parser.register('profile_idc', ArgOpt.create_options(66))
+    self.parser.register('QP', ArgOpt.set_int_bound(0,51), debug_info = 'Quantization parameter')
     self.parser.register('constraint_set0_flag', ArgOpt.set_any_bool())
     self.parser.register('constraint_set1_flag', ArgOpt.set_any_bool())
     self.parser.register('constraint_set2_flag', ArgOpt.set_any_bool())

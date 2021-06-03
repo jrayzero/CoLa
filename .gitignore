@@ -4,3 +4,8 @@ build
 apps/*.dSYM
 apps/*.o
 apps/encoder
+apps/a.out
+apps/foo.c
+apps/foo.seq
+apps/quantize.seq.old
+apps/test

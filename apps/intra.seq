@@ -6,6 +6,8 @@ from partition import *
 from utils import *
 from constants import *
 
+# LIBRARY
+
 # TODO I think I do actually need slice information even though the standard doesn't really specify it
 # TODO this all assumes 2D indexing, which I may not want 
 # TODO support I_PCM

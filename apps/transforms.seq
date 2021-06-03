@@ -3,6 +3,8 @@ from ..cola.frontend.block import *
 from ..cola.frontend.scan import *
 from partition import *
 
+# LIBRARY
+
 class Hadamard:
   # I've just copied these from JM, so may not be the best implementation approach
 
@@ -239,12 +241,22 @@ class DCT:
 
   def core_8x8_transform(inp):
     """
-    Splits into 4x4 blocks and runs 4x4 transform on each.
+    Splits into 8x8 blocks and runs 8x8 transform on each.
     """
     out = Block(inp)
     inp_split,out_split = Partition.grid(inp,8),Partition.grid(out,8)
     for i,o in scan(inp_split,out_split):
       DCT.dct8x8(i,o)
+    return out
+
+  def core_8x8_itransform(inp):
+    """
+    Splits into 8x8 blocks and runs 8x8 inverse transform on each.
+    """
+    out = Block(inp)
+    inp_split,out_split = Partition.grid(inp,8),Partition.grid(out,8)
+    for i,o in scan(inp_split,out_split):
+      DCT.idct8x8(i,o)
     return out
  
   def dct8x8(inp, out):
