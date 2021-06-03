@@ -851,7 +851,11 @@ class Block[E,T,C]:
     return self.base.origin()
 
   def remap(self, other: Block[E,T,C]) -> Block[E,T,C]:
-    self.remap(other.base)
+    self.base.remap(other.base)
+    return self
+
+  def remap(self, other: View[E,T,C]) -> Block[E,T,C]:
+    self.base.remap(other.base)
     return self
 
   def is_same_region(self, other: Block[E,T,C]) -> bool:
@@ -1222,6 +1226,17 @@ class Multidim[E,T,C]:
       res[n] = self(n) + other
     return res
 
+  def __iadd__(self, other: Multidim[E,T,C]):
+    if self.dims() != other.dims():
+      raise ColaError()
+    for n in range(self.nunits()):
+      self[n] = self(n) + other(n)
+    return self
+  def __iadd__(self, other: E):
+    for n in range(self.nunits()):
+      self[n] = self(n) + other
+    return self
+
   def __sub__(self, other: Multidim[E,T,C]):
     if self.dims() != other.dims():
       raise ColaError()
@@ -1234,6 +1249,17 @@ class Multidim[E,T,C]:
     for n in range(self.nunits()):
       res[n] = self(n) - other
     return res
+
+  def __isub__(self, other: Multidim[E,T,C]):
+    if self.dims() != other.dims():
+      raise ColaError()
+    for n in range(self.nunits()):
+      self[n] = self(n) - other(n)
+    return self
+  def __isub__(self, other: E):
+    for n in range(self.nunits()):
+      self[n] = self(n) - other
+    return self
 
   def __mul__(self, other: Multidim[E,T,C]):
     if self.dims() != other.dims():
@@ -1248,6 +1274,17 @@ class Multidim[E,T,C]:
       res[n] = self(n) * other
     return res
 
+  def __imul__(self, other: Multidim[E,T,C]):
+    if self.dims() != other.dims():
+      raise ColaError()
+    for n in range(self.nunits()):
+      self[n] = self(n) * other(n)
+    return self
+  def __imul__(self, other: E):
+    for n in range(self.nunits()):
+      self[n] = self(n) * other
+    return self
+
   def __mod__(self, other: Multidim[int,T,C]):
     if self.dims() != other.dims():
       raise ColaError()
@@ -1260,6 +1297,17 @@ class Multidim[E,T,C]:
     for n in range(self.nunits()):
       res[n] = self(n) % other
     return res
+
+  def __imod__(self, other: Multidim[int,T,C]):
+    if self.dims() != other.dims():
+      raise ColaError()
+    for n in range(self.nunits()):
+      self[n] = self(n) % other(n)
+    return self
+  def __imod__(self, other: int):
+    for n in range(self.nunits()):
+      self[n] = self(n) % other
+    return self
 
   def __floordiv__(self, other: Multidim[E,T,C]):
     if self.dims() != other.dims():
@@ -1274,6 +1322,17 @@ class Multidim[E,T,C]:
       res[n] = self(n) // other
     return res
 
+  def __floordiv__(self, other: Multidim[E,T,C]):
+    if self.dims() != other.dims():
+      raise ColaError()
+    for n in range(self.nunits()):
+      self[n] = self(n) // other(n)
+    return self
+  def __floordiv__(self, other: E):
+    for n in range(self.nunits()):
+      self[n] = self(n) // other
+    return self
+
   def __truediv__(self, other: Multidim[E,T,C]):
     if self.dims() != other.dims():
       raise ColaError()
@@ -1286,6 +1345,17 @@ class Multidim[E,T,C]:
     for n in range(self.nunits()):
       res[n] = self(n) / other
     return res
+  
+  def __itruediv__(self, other: Multidim[E,T,C]):
+    if self.dims() != other.dims():
+      raise ColaError()
+    for n in range(self.nunits()):
+      self[n] = self(n) / other(n)
+    return self
+  def __itruediv__(self, other: E):
+    for n in range(self.nunits()):
+      self[n] = self(n) / other
+    return self
   
   # TODO once I can specified self: Multidim[int,T,C], do that
   def __lshift__(self: Multidim[E,T,C], other: Multidim[int,T,C]):
@@ -1301,6 +1371,17 @@ class Multidim[E,T,C]:
       res[n] = self(n) << other
     return res    
 
+  def __ilshift__(self: Multidim[E,T,C], other: Multidim[int,T,C]):
+    if self.dims() != other.dims():
+      raise ColaError()
+    for n in range(self.nunits()):
+      self[n] = self(n) << other(n)
+    return self
+  def __ilshift__(self: Multidim[E,T,C], other: int):
+    for n in range(self.nunits()):
+      self[n] = self(n) << other
+    return self   
+
   def __rshift__(self: Multidim[E,T,C], other: Multidim[int,T,C]):
     if self.dims() != other.dims():
       raise ColaError()
@@ -1314,10 +1395,21 @@ class Multidim[E,T,C]:
       res[n] = self(n) >> other
     return res    
 
+  def __irshift__(self: Multidim[E,T,C], other: Multidim[int,T,C]):
+    if self.dims() != other.dims():
+      raise ColaError()
+    for n in range(self.nunits()):
+      self[n] = self(n) >> other(n)
+    return self
+  def __irshift__(self: Multidim[E,T,C], other: int):
+    for n in range(self.nunits()):
+      self[n] = self(n) >> other
+    return self   
+
   def __abs__(self):
     res = Multidim[E,T,C](self.dims())
     for n in range(self.nunits()):
-      res[n] = abs(self(n))
+      self[n] = abs(self(n))
     return res
 
   def __neg__(self):
@@ -1341,6 +1433,16 @@ class Block[E,T,C]:
     return Block(self.base + other.base)
   def __add__(self, other: E) -> Block[E,T,C]:
     return Block(self.base + other)
+
+  def __iadd__(self, other: Block[E,T,C]) -> Block[E,T,C]:
+    self.base += other.base
+    return self
+  def __iadd__(self, other: View[E,T,C]) -> Block[E,T,C]:
+    self.base += other.base
+    return self
+  def __iadd__(self, other: E) -> Block[E,T,C]:
+    self.base += other
+    return self
 
   def __sub__(self, other: Block[E,T,C]) -> Block[E,T,C]:
     return Block(self.base - other.base)
@@ -1384,12 +1486,32 @@ class Block[E,T,C]:
   def __lshift__(self: Block[E,T,C], other: int) -> Block[int,T,C]:
     return Block(self.base << other)
 
+  def __ilshift__(self: Block[E,T,C], other: Block[int,T,C]) -> Block[int,T,C]:
+    self.base <<= other.base
+    return self
+  def __ilshift__(self: Block[E,T,C], other: View[int,T,C]) -> Block[int,T,C]:
+    self.base <<= other.base
+    return self
+  def __ilshift__(self: Block[E,T,C], other: int) -> Block[int,T,C]:
+    self.base <<= other
+    return self
+
   def __rshift__(self: Block[E,T,C], other: Block[int,T,C]) -> Block[int,T,C]:
     return Block(self.base >> other.base)
   def __rshift__(self: Block[E,T,C], other: View[int,T,C]) -> Block[int,T,C]:
     return Block(self.base >> other.base)
   def __rshift__(self: Block[E,T,C], other: int) -> Block[int,T,C]:
     return Block(self.base >> other)
+
+  def __irshift__(self: Block[E,T,C], other: Block[int,T,C]) -> Block[int,T,C]:
+    self.base >>= other.base
+    return self
+  def __irshift__(self: Block[E,T,C], other: View[int,T,C]) -> Block[int,T,C]:
+    self.base >>= other.base
+    return self
+  def __irshift__(self: Block[E,T,C], other: int) -> Block[int,T,C]:
+    self.base >>= other
+    return self
 
   def __abs__(self) -> Block[E,T,C]:
     return Block(abs(self.base))
@@ -1452,12 +1574,32 @@ class View[E,T,C]:
   def __lshift__(self: View[E,T,C], other: int) -> Block[int,T,C]:
     return Block(self.base << other)
 
+  def __ilshift__(self: View[E,T,C], other: Block[int,T,C]) -> View[int,T,C]:
+    self.base <<= other.base
+    return self
+  def __ilshift__(self: View[E,T,C], other: View[int,T,C]) -> View[int,T,C]:
+    self.base <<= other.base
+    return self
+  def __ilshift__(self: View[E,T,C], other: int) -> View[int,T,C]:
+    self.base <<= other
+    return self
+
   def __rshift__(self: View[E,T,C], other: Block[int,T,C]) -> Block[int,T,C]:
     return Block(self.base >> other.base)
   def __rshift__(self: View[E,T,C], other: View[int,T,C]) -> Block[int,T,C]:
     return Block(self.base >> other.base)
   def __rshift__(self: View[E,T,C], other: int) -> Block[int,T,C]:
     return Block(self.base >> other)
+
+  def __irshift__(self: View[E,T,C], other: Block[int,T,C]) -> View[int,T,C]:
+    self.base >>= other.base
+    return self
+  def __irshift__(self: View[E,T,C], other: View[int,T,C]) -> View[int,T,C]:
+    self.base >>= other.base
+    return self
+  def __irshift__(self: View[E,T,C], other: int) -> View[int,T,C]:
+    self.base >>= other
+    return self
 
   def __abs__(self) -> Block[E,T,C]:
     return Block(abs(self.base))
