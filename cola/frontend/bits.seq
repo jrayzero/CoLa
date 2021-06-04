@@ -1,0 +1,469 @@
+import internal.gc as gc
+from error import ColaError
+
+class Bits[N: int]:  
+  l1_buffer: Ptr[byte]
+  l1_sz: int
+  l1_max_cap: int
+  l0_buffer: UInt[N]
+  l0_sz: int
+  fd: Optional[File] # if you have a file, you don't resize l
+  offset: int
+  
+  def __init__(self, l1_start_capacity = 64, l1_max_capacity = 64):
+    self.l0_buffer = UInt[N](0)
+    self.l0_sz = 0
+    self.l1_buffer = Ptr[byte](l1_start_capacity)
+    self.l1_max_cap = l1_max_capacity
+    self.l1_sz = 0
+    self.offset = 0
+
+  def __init__(self, fd: File, l1_start_capacity = 64, l1_max_capacity = 64):
+    self.l0_buffer = UInt[N](0)
+    self.l0_sz = 0
+    self.l1_buffer = Ptr[byte](l1_start_capacity)
+    self.l1_max_cap = l1_max_capacity
+    self.l1_sz = 0
+    self.fd = fd
+    self.offset = 0
+
+  def reset_offset(self):
+    self.offset = 0
+
+  def _pack[T: int](self, val: UInt[T], nbits: int):
+    assert T >= nbits
+    nbits_to_pack = nbits
+    # MSB align and zero out MSB bits not needed
+    bitseq = val << UInt[T](T - nbits)#val >> UInt[T](T-nbits)    
+    # see how many bits are left in l0
+    while nbits_to_pack > 0:
+      l0_bits_free = N - self.l0_sz
+      # see if we need all of the free bits
+      bits_needed = min(nbits_to_pack, l0_bits_free)
+      mask = ~((UInt[T](1) << UInt[T](T-bits_needed)) - UInt[T](1))
+      masked_bits = bitseq & mask
+      # now shift back to be LSB aligned
+      masked_bits >>= UInt[T](T - bits_needed)
+      # and convert to UInt[N]
+      N_masked_bits = UInt[N](masked_bits)
+      # align to appropriate MSB side in l0_buffer
+      N_masked_bits <<= UInt[N](l0_bits_free-bits_needed)
+      # now shift them to be appended onto l0
+      self.l0_buffer |= UInt[N](N_masked_bits)
+      # align to MSB
+      bitseq <<= UInt[T](bits_needed)
+      nbits_to_pack -= bits_needed
+      self.l0_sz += bits_needed
+      # flush to l1_buffer if needed
+      self._put_if(N//2)
+
+  def pack(self, val: int, nbits):
+    self._pack(UInt[64](val), nbits)
+
+  def pack[T: int](self, val: Int[T], nbits):
+    self._pack(UInt[T](val), nbits)
+
+  def pack[T: int](self, val: UInt[T], nbits):
+    self._pack(val, nbits)
+
+  def pack(self, val: byte, nbits):
+    self._pack(u8(val), nbits)
+
+  # see if we need to move bits from l0_buffer to l1_buffer
+  def _put_if(self, bound: int = N//2):
+    # need to flush to no more than 32 bits
+    while self.l0_sz > bound:
+      # we move 1 byte at a time from MSB to LSB
+      bt = (self.l0_buffer >> UInt[N](N-8)) & UInt[N](0xFF)
+      self.l1_buffer[self.l1_sz] = byte(bt)
+      self.l1_sz += 1      
+      self.l0_buffer <<= UInt[N](8) # get rid of the byte we just did
+      self.l0_sz -= 8
+      self.flush_file_or_resize_l1()
+
+  # TODO NEED TO MAKE THESE CLEARER. WHEN DO YOU FLUSH TO FILE? WHEN DO YOU SPECIFY A DIFFERENT FILE?
+  # WHEN DO YOU JUST FLUSH FROM L0 to L1
+
+  # see if we need to flush our output buffer to file (or resize)
+  def flush_file_or_resize_l1(self):
+    if self.l1_sz == self.l1_max_cap:
+      if self.fd:
+        # write to file
+        assert _C.fwrite(self.l1_buffer, 1, self.l1_sz, self.fd.fp) == self.l1_sz
+        self.l1_sz = 0
+        self.fd.flush()
+      else:
+        # resize
+        self.l1_max_cap = self.l1_max_cap * 2
+        self.l1_buffer = self.l1_buffer.resize(self.l1_max_cap)
+
+  # force l0_buffer to be put to l1_buffer, even if not completely full
+  # you can only flush if l0 is a multiple of byts. The user is responsible for padding that out  
+  def flush_l0_to_l1(self, reset_l1: bool = True) -> bool:
+    if self.l0_sz & 7 != 0:
+      return False
+    #    partial = self.l0_sz & 7
+    #    if partial > 0:
+    #      nbits = 8 - partial
+    #      val = (1 << nbits) - 1
+    #      uval = UInt[N](val)
+    #      uval &= UInt[N]((1 << nbits)-1)
+    #      self.l0_sz += nbits
+    #      uval <<= UInt[N](N-self.l0_sz)
+    #      uval |= self.l0_buffer
+    #      self.l0_buffer = uval
+    # flush everything to the l1_buffer
+    self._put_if(0)
+    return True
+
+  def _flush_to_file(self, reset_l1: bool = True) -> bool: 
+    if self.flush_l0_to_l1():
+      if self.fd:
+        assert  _C.fwrite(self.l1_buffer, 1, self.l1_sz, self.fd.fp) == self.l1_sz
+        if reset_l1:
+          self.l1_sz = 0
+        self.fd.flush()
+        return True
+    return False    
+
+  def bits_left(self, at_least: int = 0) -> bool:
+    return (len(self) - self.offset) >= at_least
+
+  # dumps the current state of the l0 and l1 buffers. just prints in decimal for now cause
+  # I'm lazy
+  def __str__(self):
+    s = 'nbits (factoring in offset) : ' + str(len(self)) + '\n'
+    for b in self.do_iter():
+      s += str(int(b))
+    return s
+#    for i in range(self.l1_sz):
+#      if i > 0:
+#        s += ' '
+#      else:
+#        s += '\n'
+#      for b in range(7,-1,-1): # one byte
+#        s += str((self.l1_buffer[b] >> byte(b)) & byte(1))
+#    s += '\n'
+#    s += 'In l0 buffer (' + str(self.l0_sz) + ' bits):'
+#    if self.l0_sz > 0:
+#      # mask off junk bits
+#      mask = ~((1 << (N - self.l0_sz)) - 1)
+#      kept = self.l0_buffer & UInt[N](mask)
+#      for b in range(N-1,N-self.l0_sz-1,-1):        
+#        s += str((kept >> UInt[N](b)) & UInt[N](1))
+#      s += '\n'
+#    return s
+
+  def do_iter(self):
+    # doesn't modify the iterator
+    l = len(self)
+    local_offset = 0
+    for i in range(l):
+      mx = 1 #self.offset + 1
+      if mx > len(self):
+        raise ColaError()      
+      idx = self.offset + local_offset
+      if idx < self.l1_sz * 8:
+        which_byte = idx // 8
+        the_byte = u8(self.l1_buffer[which_byte])
+        which_bit = idx & 7
+        the_byte >>= u8((8 - which_bit - 1))
+        the_bit = UInt[64](the_byte & u8(1))
+        the_bit <<= UInt[64](64 - i - 1)
+        yield bool(the_bit)
+      else:
+        # in l0
+        # determine offset in l0
+        idx -= self.l1_sz * 8
+        the_bit = UInt[64]((self.l0_buffer >> UInt[N](N - idx - 1)) & UInt[N](1))
+        the_bit <<= UInt[64](64 - i - 1)
+        yield bool(the_bit)
+      local_offset += 1
+
+  # only supports up to 64 bits at a time (cause I can't seem to add a generic to __call__)
+  # If you want to drop the data, call unpack after
+  def __call__(self, nbits: int) -> UInt[64]:  
+    local_offset = 0
+    mx = nbits #self.offset + nbits
+    if nbits > 64 and nbits < 0:
+      raise ColaError()
+    if mx > len(self):
+      raise ColaError()
+    ret = UInt[64](0)
+    # naively read bit by bit
+    for i in range(nbits):
+      idx = self.offset + local_offset
+      if idx < self.l1_sz * 8:
+        which_byte = idx // 8
+        the_byte = u8(self.l1_buffer[which_byte])
+        which_bit = idx & 7
+        the_byte >>= u8((8 - which_bit - 1))
+        the_bit = UInt[64](the_byte & u8(1))
+        the_bit <<= UInt[64](64 - i - 1)
+        ret |= the_bit
+      else:
+        # in l0
+        # determine offset in l0
+        idx -= self.l1_sz * 8
+        the_bit = UInt[64]((self.l0_buffer >> UInt[N](N - idx - 1)) & UInt[N](1))
+        the_bit <<= UInt[64](64 - i - 1)
+        ret |= the_bit        
+      local_offset += 1
+    # LSB align
+    return ret >> u64(64 - nbits)
+
+  # TODO currently, this just changes the offset, rather than actually removing bits
+  # figure out how to remove bits eventually
+  def unpack(self, nbits: int) -> UInt[64]:
+    val = self.__call__(nbits)
+    self.offset += nbits
+    return val
+
+  # doesn't advance
+#  def peek(self, nbits: int) -> UInt[64]:
+#    mx = self.offset + nbits
+#    if nbits > 64 and nbits < 0:
+#      raise ColaError()
+#    if mx > len(self):      
+#      raise ColaError(str(mx))       
+#    ret = UInt[64](0)
+#    # naively read bit by bit
+#    idx = self.offset
+#    for i in range(nbits):
+#      if idx < self.l1_sz * 8:
+#        which_byte = idx // 8
+#        the_byte = u8(self.l1_buffer[which_byte])
+#        which_bit = idx & 7
+#        the_byte >>= u8((8 - which_bit - 1))
+#        the_bit = UInt[64](the_byte & u8(1))
+#        the_bit <<= UInt[64](64 - i - 1)
+#        ret |= the_bit
+#      else:
+#        # in l0
+#        # determine offset in l0
+#        idx -= self.l1_sz * 8
+#        the_bit = UInt[64]((self.l0_buffer >> UInt[N](N - idx - 1)) & UInt[N](1))
+#        the_bit <<= UInt[64](64 - i - 1)
+#        ret |= the_bit        
+#      idx += 1
+#    # LSB align
+#    return ret >> u64(64 - nbits)
+  
+  def rewind(self, move_back: int):
+    if self.offset < move_back:
+      raise ColaError()
+    self.offset -= move_back    
+
+# TODO need seek_end for this
+#  def ingest(ingest_from: File, nbytes: int = -1, flush_to_l1: bool = True) -> Bits[64]:
+#    bits = Bits[64]()
+#    if nbytes == -1:
+#      ingest_from.seek(0, _C.seek_end())
+#      nbytes = ingest_from.tell()
+#      ingest_from.seek(0, _C.seek_set())
+#    # TODO naively read one byte at a time. make this better later cause it's gonna be slow
+#    for i in range(nbytes):
+#      bits.pack(ingest_from.read_b(), 8)
+#    if flush_to_l1:
+#      if not bits.flush_l0_to_l1(): # shouldn't need to pack any stuffing bits since you read whole bytes
+#        raise ColaError("Read a non-integral number of bytes")
+#    return bits    
+
+  def __len__(self):
+    return self.l0_sz + self.l1_sz * 8 - self.offset
+
+  def flush_to_file(self, flush_to: Optional[File] = None, reset_l1: bool = False) -> bool:
+    # just flush whatever is in l0 and l1 to file
+    if flush_to:
+      tmp = self.fd
+      self.fd = flush_to
+      b = self._flush_to_file(reset_l1)
+      self.fd = tmp
+      return b
+    else:
+      b = self._flush_to_file(reset_l1)      
+      return b
+
+  def __eq__[S:int](self, other: Bits[S]):
+    if len(self) != len(other):
+      return False
+    for a,b in zip(self.do_iter(), other.do_iter()):
+      if a != b:
+        return False
+    return True
+
+  def __ne__[S:int](self, other: Bits[S]):
+    return not (self == other)
+ 
+@extend
+class UInt[N: int]:
+
+  def __new__(val) -> UInt[N]:
+    return UInt[N].process(val)
+
+  def process[T: int](val: UInt[T]) -> UInt[N]:
+    if T == N:
+      return UInt[N].process_eq(val)
+    elif T < N:
+      return UInt[N].process_ext(val)
+    else:
+      return UInt[N].process_trunc(val)
+  def process(val: byte) -> UInt[N]:
+    if 8 == N:
+      return UInt[N].process_eq(val)
+    elif 8 < N:
+      return UInt[N].process_ext(val)
+    else:
+      return UInt[N].process_trunc(val)
+  def process(val: bool) -> UInt[N]:
+    if 1 == N:
+      return UInt[N].process_eq(val)
+    elif 1 < N:
+      return UInt[N].process_ext(val)
+    else:
+      return UInt[N].process_trunc(val)
+  @llvm
+  def process_trunc[T: int](val: UInt[T]) -> UInt[N]:
+    %0 = trunc i{=T} %val to i{=N}
+    ret i{=N} %0
+  @llvm
+  def process_ext[T: int](val: UInt[T]) -> UInt[N]:
+    %0 = zext i{=T} %val to i{=N}
+    ret i{=N} %0
+  @llvm
+  def process_eq[T: int](val: UInt[T]) -> UInt[N]:
+    ret i{=N} %val
+  @llvm
+  def process_trunc(val: byte) -> UInt[N]:
+    %0 = trunc i8 %val to i{=N}
+    ret i{=N} %0
+  @llvm
+  def process_ext(val: byte) -> UInt[N]:
+    %0 = zext i8 %val to i{=N}
+    ret i{=N} %0
+  @llvm
+  def process_eq(val: byte) -> UInt[N]:
+    ret i{=N} %val
+  @llvm
+  def process_trunc(val: bool) -> UInt[N]:
+    %0 = trunc i1 %val to i{=N}
+    ret i{=N} %0
+  @llvm
+  def process_ext(val: bool) -> UInt[N]:
+    %0 = zext i1 %val to i{=N}
+    ret i{=N} %0
+  @llvm
+  def process_eq(val: bool) -> UInt[N]:
+    ret i{=N} %val
+
+      
+@extend
+class byte:
+
+  def __new__(val) -> byte:
+    return byte.process(val)
+
+  def process[T: int](val: Int[T]) -> byte:
+    if T == 8:
+      return byte.process_eq(val)
+    elif T < 8:
+      return byte.process_ext(val)
+    else:
+      return byte.process_trunc(val)
+
+  def process[T: int](val: UInt[T]) -> byte:
+    if T == 8:
+      return byte.process_eq(val)
+    elif T < 8:
+      return byte.process_ext(val)
+    else:
+      return byte.process_trunc(val)      
+  @llvm
+  def process_trunc[T: int](val: Int[T]) -> byte:
+    %0 = trunc i{=T} %val to i8
+    ret i8 %0
+  @llvm
+  def process_trunc[T: int](val: UInt[T]) -> byte:
+    %0 = trunc i{=T} %val to i8
+    ret i8 %0
+  @llvm
+  def process_ext[T: int](val: Int[T]) -> byte:
+    %0 = zext i{=T} %val to i8
+    ret i8 %0
+  @llvm
+  def process_ext[T: int](val: UInt[T]) -> byte:
+    %0 = zext i{=T} %val to i8
+    ret i8 %0
+  @llvm
+  def process_eq[T: int](val: Int[T]) -> byte:
+    ret i8 %val
+  @llvm
+  def process_eq[T: int](val: UInt[T]) -> byte:
+    ret i8 %val
+  @llvm
+  def __rshift__(self, other: byte) -> byte:
+    %0 = ashr i8 %self, %other
+    ret i8 %0
+  @llvm
+  def __and__(a: byte, b: byte) -> byte:
+    %tmp = and i8 %a, %b
+    ret i8 %tmp
+
+@extend
+class File:
+  
+  # T = bytes
+  def read_u[T: int](self) -> UInt[T*8]:
+    self._ensure_open()
+    buf = Ptr[byte](T)
+    assert _C.fread(buf, 1, T, self.fp) == T
+    self._errcheck("error in read")
+    return buf.convert_u[T*8]()
+
+  def read_s[T: int](self) -> Int[T*8]:
+    self._ensure_open()
+    buf = Ptr[byte](T)
+    assert _C.fread(buf, 1, T, self.fp) == T
+    self._errcheck("error in read")
+    return buf.convert_s[T*8]()
+
+  def read_b(self) -> byte:
+    self._ensure_open()
+    buf = Ptr[byte](1)
+    assert _C.fread(buf, 1, 1, self.fp) == 1
+    self._errcheck("error in read")    
+    return buf[0]
+
+  def read_into[T](self, buf: Ptr[T], sz: int=1, nelems:int=1, offset:int = 0):
+    self._ensure_open()
+    assert _C.fread((buf+offset).as_byte(), sz, nelems, self.fp) == nelems
+    self._errcheck("error in read")        
+  
+
+@extend
+class Ptr[T]:
+  def resize(self, new_cap: int) -> Ptr[T]:
+    return Ptr[T](gc.realloc(self, new_cap * gc.sizeof[T]()))
+  @llvm
+  def convert_u[N: int](self) -> UInt[N]:
+    %0 = bitcast {=T}* %self to i{=N}*
+    %1 = load i{=N}, i{=N}* %0 
+    ret i{=N} %1  
+  @llvm
+  def convert_s[N: int](self) -> Int[N]:
+    %0 = bitcast {=T}* %self to i{=N}*
+    %1 = load i{=N}, i{=N}* %0 
+    ret i{=N} %1    
+
+@extend
+class float:
+  def __new__(i) -> float:
+    return float._to_float(i)
+  @llvm
+  def _to_float[N:int](i: UInt[N]) -> float:
+    %0 = uitofp i{=N} %i to double
+    ret double %0
+  @llvm
+  def _to_float[N:int](i: Int[N]) -> float:
+    %0 = sitofp i{=N} %i to double
+    ret double %0
