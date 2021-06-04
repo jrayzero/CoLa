@@ -9,3 +9,4 @@ apps/foo.c
 apps/foo.seq
 apps/quantize.seq.old
 apps/test
+apps/*.csv

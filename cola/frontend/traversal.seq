@@ -51,6 +51,9 @@ class Movement:
   def is_rrot(self):
     return self.mtype == 4
 
+  def __str__(self):
+    return str(self.mtype)
+
 class Traversal:
 
   movements: list[Movement]
@@ -100,6 +103,11 @@ class Traversal:
     movement = Movement(0)
     movement.set_step(coord, 1)
     self.add_movement(movement)
+
+  def insert_astep(self, loc, vec, multiplier=1):
+    movement = Movement(1)
+    movement.set_step(vec, multiplier)
+    self.movements.insert(loc,movement)
 
   def add_astep(self, vec, multiplier=1):
     movement = Movement(1)
@@ -168,7 +176,7 @@ class Traversal:
     return self._gen_coords(origin)
 
   def __str__(self) -> str:
-    return ' -> '.join(tuple(str(coord) for coord in self))
+    return ' -> '.join([str(coord) for coord in self])
 
   # generate the coordinates and write them to file
   # for use with plotting
@@ -178,25 +186,6 @@ class Traversal:
       fd.write(str(coord[0]) + ',' + str(coord[1]) + '\n')
     fd.flush()
     fd.close()      
-
-class AStep:
-  step: Tuple[int,int]
-  mult: int
-  def __init__(self, step: tuple[int,int], mult: int=1):
-    self.step = step
-    self.mult = mult
-
-  def __add__(self, other: Traversal):
-    movement = Movement(1)
-    movement.set_step(self.step, self.mult)
-    other.movements.insert(0, movement)
-    return other
-
-  def __radd__(self, other: Traversal):
-    movement = Movement(1)
-    movement.set_step(self.step, self.mult)
-    other.add_movement(movement)
-    return other
 
 class AppliedTraversal[E,T,C]:
   
