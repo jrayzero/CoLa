@@ -1,8 +1,15 @@
 from block import Block,View
 from ptree import PTree,AndPTree
 from traversal import Traversal,AppliedTraversal
+from bits import Bits
 
 class ScanUtils:
+
+  def _scan[N:int](item: Bits[N], *items):
+    if staticlen(items) == 0:
+      return (item.do_iter(),)
+    else:
+      return (item.do_iter(),) + ScanUtils._scan(*items)
 
   def _scan[E,T,C](item: View[E,T,C], *items):
     if staticlen(items) == 0:
@@ -34,13 +41,8 @@ class ScanUtils:
     else:
       return (item.do_iter(),) + ScanUtils._scan(*items)
 
-# TODO having this messes up the type system (for some reason it matches Block to this when you have Block in items, so
-# I imagine that 
-#  def _scan(item, *items):
-#    if staticlen(items) == 0:
-#      return (iter(item),)
-#    else:
-#      return (iter(item),) + ScanUtils._scan(*items)
+  def _scan1[N:int](item: Bits[N]):
+    return item.do_iter()
 
   def _scan1[E,T,C](item: View[E,T,C]):
     return iter(item.base)
