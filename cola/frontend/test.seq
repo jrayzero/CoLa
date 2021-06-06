@@ -1,0 +1,16 @@
+from arg_parse import *
+import sys
+import bits
+import block
+
+parser = ArgParse()
+parser.register('block', ArgOpt().set_any_bool(), False, 'If true, test block.seq')
+parser.register('bits', ArgOpt().set_any_bool(), False, 'If true, test bits.seq')
+parser.register('all', ArgOpt().set_any_bool(), True, 'If true, run all tests')
+parser.parse(sys.argv[1:])
+
+do_all = parser['all']
+if do_all or parser['block']:
+  block.do_test()
+if do_all or parser['bits']:
+  bits.do_test()

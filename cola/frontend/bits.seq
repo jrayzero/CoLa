@@ -1,6 +1,67 @@
 import internal.gc as gc
 from error import ColaError
 
+class RBits[N:int]:
+  """
+  A special bit sequence that shifts in bits. when full (nbits == N), 
+  it drops off the MSB bits rather than packing them,
+  """
+  # TODO limited to packing single bit right now
+
+  l0_buffer: UInt[N]
+  l0_sz: int
+
+  def __init__(self):
+    self.l0_sz = 0
+    self.l0_buffer = UInt[N](0)
+
+  def pack(self, bit: int):
+    self.pack(bool(bit))
+    
+  def pack(self, bit: bool):
+    bit2 = int(bit)
+    if self.l0_sz == N:
+      self.l0_buffer <<= UInt[N](1)
+      self.l0_buffer |= UInt[N](bit2)
+    else:
+      bit2 <<= (N-self.l0_sz-1)
+      self.l0_buffer |= UInt[N](bit2)
+      self.l0_sz += 1
+
+  def clear(self):
+    self.l0_sz = 0
+    self.l0_buffer = UInt[N](0)
+
+  def __len__(self):
+    return self.l0_sz
+
+  def reverse(self):
+    # super naive reversal
+    new_l0 = UInt[N](0)
+    seq = self.l0_buffer >> (N-self.l0_sz)
+    for i in range(self.l0_sz):
+      b = seq & UInt[N](1)
+      seq >>= UInt[N](1)
+      new_l0 |= (b << UInt[N](1))    
+    self.l0_buffer = new_l0
+
+  def do_iter(self):
+    for i in range(len(self)):
+      yield (self.l0_buffer >> UInt[N](N-i-1)) & UInt[N](1)
+
+  def __str__(self):
+    s = 'nbits ' + str(len(self)) + '\n'
+    for b in self.do_iter():
+      s += str(int(b))
+    return s
+
+  def __eq__(self, other: UInt[N]):
+    bits = self.l0_buffer >> UInt[N](N-len(self))
+    return bits == other
+
+  def __ne__(self, other: UInt[N]):
+    return not (self == other)
+      
 class Bits[N: int]:  
   l1_buffer: Ptr[byte]
   l1_sz: int
@@ -31,7 +92,8 @@ class Bits[N: int]:
     self.offset = 0
 
   def _pack[T: int](self, val: UInt[T], nbits: int):
-    assert T >= nbits
+    if T < nbits:
+      raise ColaError()
     nbits_to_pack = nbits
     # MSB align and zero out MSB bits not needed
     bitseq = val << UInt[T](T - nbits)#val >> UInt[T](T-nbits)    
@@ -437,8 +499,7 @@ class File:
   def read_into[T](self, buf: Ptr[T], sz: int=1, nelems:int=1, offset:int = 0):
     self._ensure_open()
     assert _C.fread((buf+offset).as_byte(), sz, nelems, self.fp) == nelems
-    self._errcheck("error in read")        
-  
+    self._errcheck("error in read")          
 
 @extend
 class Ptr[T]:
@@ -467,3 +528,19 @@ class float:
   def _to_float[N:int](i: Int[N]) -> float:
     %0 = sitofp i{=N} %i to double
     ret double %0
+
+@test
+def do_test():
+  print 'Running bits.seq tests'
+  rbits = RBits[5]()
+  rbits.pack(1)
+  rbits.pack(0)
+  rbits.pack(0)
+  rbits.pack(1)
+  rbits.pack(1)
+  assert rbits == UInt[5](19)
+  rbits.pack(0)
+  assert rbits == UInt[5](6)
+  rbits.clear()
+  assert rbits == UInt[5](0)
+  
