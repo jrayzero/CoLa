@@ -1663,7 +1663,7 @@ class list[T]:
   def __match__(self, other: Array[T]) -> bool:
     return other.__match__(self)
 
-def run_tests():
+def do_test():
   print 'Running block.seq tests'
   blk = Block.make[int](4,5).default_fill(1)
   @test
@@ -1749,4 +1749,3 @@ def run_tests():
     assert sblk['macroblock'] == blk
   t10()
     
-#run_tests()
