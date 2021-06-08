@@ -38,11 +38,11 @@ class RBits[N:int]:
   def reverse(self):
     # super naive reversal
     new_l0 = UInt[N](0)
-    seq = self.l0_buffer >> (N-self.l0_sz)
+    seq = self.l0_buffer >> UInt[N](N-self.l0_sz)
     for i in range(self.l0_sz):
       b = seq & UInt[N](1)
       seq >>= UInt[N](1)
-      new_l0 |= (b << UInt[N](1))    
+      new_l0 |= (b << UInt[N](N-i-1))    
     self.l0_buffer = new_l0
 
   def do_iter(self):
