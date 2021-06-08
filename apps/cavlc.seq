@@ -1,0 +1,45 @@
+from ..cola.frontend.bits import *
+from flag_compute import *
+from trav import *
+
+class CAVLC:
+  
+  def total_nzcoeffs_and_TrailingOnes(coeffs):
+    """
+    TrailingOnes encodes the signs and the nbits of it
+    is the number of trailing ones
+    """
+    TotalCoeff = 0
+    TrailingOnes = RBits[3]()
+    for _coeff in scan(zigzag(coeffs.dims()[0])(coeffs)):
+      coeff = _coeff()
+      if coeff == 1:
+        TrailingOnes.pack(0)
+        TotalCoeff += 1
+      elif coeff == -1:
+        TrailingOnes.pack(1)
+        TrailingCoeff += 1
+      elif coeff != 0:
+        TrailingOnes.clear()
+        TotalCoeff += 1
+      else:
+        TrailingOnes.clear()
+    TrailingOnes.reverse()
+    return TotalCoeff,TrailingOnes
+
+  def get_coeff_token(nC: int, TrailingOnes: RBits[3], TotalCoeff: int):
+    ones = len(TrailingOnes)
+    if 0 <= nC < 2:
+      return CAVLC.coeff_token_LUT_col0()[oens, TotalCoeff]
+    elif 2 <= nC < 4:
+      return CAVLC.coeff_token_LUT_col1()[ones, TotalCoeff]
+    elif 4 <= nC < 8:
+      return CAVLC.coeff_token_LUT_col2()[ones, TotalCoeff]
+    elif 8 <= nC:
+      return CAVLC.coeff_token_LUT_col3()[ones, TotalCoeff]
+    elif nC == -1:
+      return CAVLC.coeff_token_LUT_col4()[ones, TotalCoeff]
+    else: # nc == -2
+      return CAVLC.coeff_token_LUT_col5()[ones, TotalCoeff]
+
+  
