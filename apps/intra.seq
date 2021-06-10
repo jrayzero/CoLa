@@ -39,40 +39,37 @@ class H264IntraCommon:
     else:
       return False
 
-  def left_available(region_to_predict, ref_colocated, mb_type_info, pred_info, constrained_intra_pred_flag) -> bool:    
+  def left_available(region_to_predict, mb_type_info, pred_info, constrained_intra_pred_flag) -> bool:    
     """
     Check left availability of region_to_predict in ref_colocated.
     @ARG(region_to_predict, TO_PRED)
-    @ARG(ref_colocated, REF_COLOCATED)
     @ARG(mb_type_info, MB_TYPE_INFO)
     @ARG(pred_info, PRED_INFO)
     @ARG(constrained_intra_pred_flag, CONSTRAINED_INTRA_PRED_FLAG)
     """
-    left = ref_colocated[0,-1]
+    left = region_to_predict[0,-1]
     return H264IntraCommon.check_params(region_to_predict, left, mb_type_info, pred_info, constrained_intra_pred_flag)
 
-  def up_available(region_to_predict, ref_colocated, mb_type_info, pred_info, constrained_intra_pred_flag) -> bool:    
+  def up_available(region_to_predict, mb_type_info, pred_info, constrained_intra_pred_flag) -> bool:    
     """
     Check up availability of region_to_predict in ref_colocated. 
     @ARG(region_to_predict, TO_PRED)
-    @ARG(ref_colocated, REF_COLOCATED)
     @ARG(mb_type_info, MB_TYPE_INFO)
     @ARG(pred_info, PRED_INFO)
     @ARG(constrained_intra_pred_flag, CONSTRAINED_INTRA_PRED_FLAG)
     """
-    up = ref_colocated[-1,0]
+    up = region_to_predict[-1,0]
     return H264IntraCommon.check_params(region_to_predict, up, mb_type_info, pred_info, constrained_intra_pred_flag)
 
-  def up_left_available(region_to_predict, ref_colocated, mb_type_info, pred_info, constrained_intra_pred_flag) -> bool:    
+  def up_left_available(region_to_predict, mb_type_info, pred_info, constrained_intra_pred_flag) -> bool:    
     """
     Check up left availability of region_to_predict in ref_colocated.
     @ARG(region_to_predict, TO_PRED)
-    @ARG(ref_colocated, REF_COLOCATED)
     @ARG(mb_type_info, MB_TYPE_INFO)
     @ARG(pred_info, PRED_INFO)
     @ARG(constrained_intra_pred_flag, CONSTRAINED_INTRA_PRED_FLAG)
     """
-    up_left = ref_colocated[-1,-1]
+    up_left = region_to_predict[-1,-1]
     return H264IntraCommon.check_params(region_to_predict, up_left, mb_type_info, pred_info, constrained_intra_pred_flag)
 
   # doesn't check mb type
@@ -92,58 +89,54 @@ class H264IntraCommon:
     else:
       return False
 
-  def left_available(region_to_predict, ref_colocated, pred_info, \
+  def left_available(region_to_predict, pred_info, \
                      constrained_intra_pred_flag) -> bool:    
     """
     Check left availability of region_to_predict in ref_colocated.
     @ARG(region_to_predict, TO_PRED)
-    @ARG(ref_colocated, REF_COLOCATED)
     @ARG(pred_info, PRED_INFO)
     @ARG(constrained_intra_pred_flag, CONSTRAINED_INTRA_PRED_FLAG)
     """
-    left = ref_colocated[0,-1]
+    left = region_to_predict[0,-1]
     return H264IntraCommon.check_params(region_to_predict, left, pred_info, constrained_intra_pred_flag)
 
-  def up_available(region_to_predict, ref_colocated, pred_info, \
+  def up_available(region_to_predict, pred_info, \
                    constrained_intra_pred_flag) -> bool:    
     """
     Check up availability of region_to_predict in ref_colocated. 
     @ARG(region_to_predict, TO_PRED)
-    @ARG(ref_colocated, REF_COLOCATED)
     @ARG(pred_info, PRED_INFO)
     @ARG(constrained_intra_pred_flag, CONSTRAINED_INTRA_PRED_FLAG)
     """
-    up = ref_colocated[-1,0]
+    up = region_to_predict[-1,0]
     return H264IntraCommon.check_params(region_to_predict, up, pred_info, constrained_intra_pred_flag)
 
-  def up_left_available(region_to_predict, ref_colocated, pred_info, \
+  def up_left_available(region_to_predict, pred_info, \
                         constrained_intra_pred_flag) -> bool:    
     """
     Check up left availability of region_to_predict in ref_colocated.
     @ARG(region_to_predict, TO_PRED)
-    @ARG(ref_colocated, REF_COLOCATED)
     @ARG(pred_info, PRED_INFO)
     @ARG(constrained_intra_pred_flag, CONSTRAINED_INTRA_PRED_FLAG)
     """
-    up_left = ref_colocated[-1,-1]
+    up_left = region_to_predict[-1,-1]
     return H264IntraCommon.check_params(region_to_predict, up_left, pred_info, constrained_intra_pred_flag)
 
-  def up_right_available(hloc, region_to_predict, ref_colocated, pred_info, \
+  def up_right_available(hloc, region_to_predict, pred_info, \
                          constrained_intra_pred_flag) -> bool:    
     """
     Check up right availability of region_to_predict in ref_colocated.
     @ARG(hloc): horizontal location to go to
     @ARG(region_to_predict, TO_PRED)
-    @ARG(ref_colocated, REF_COLOCATED)
     @ARG(pred_info, PRED_INFO)
     @ARG(constrained_intra_pred_flag, CONSTRAINED_INTRA_PRED_FLAG)
     """
-    up_right = ref_colocated[-1,hloc]
+    up_right = region_to_predict[-1,hloc]
     return H264IntraCommon.check_params(region_to_predict, up_right, pred_info, constrained_intra_pred_flag)
 
 class H264Intra16x16:
 
-  def check_availability(region_to_predict, ref_colocated, mb_type_info, pred_info, \
+  def check_availability(region_to_predict, mb_type_info, pred_info, \
                          constrained_intra_pred_flag: bool) -> Tuple[bool,bool,bool]:
     """
     Check left, right, and up left availability of 16x16 block.
@@ -153,9 +146,9 @@ class H264Intra16x16:
     @ARG(pred_info, PRED_INFO)
     @ARG(constrained_intra_pred_flag, CONSTRAINED_INTRA_PRED_FLAG)
     """
-    return H264IntraCommon.left_available(region_to_predict, ref_colocated, mb_type_info, pred_info, constrained_intra_pred_flag), \
-      H264IntraCommon.up_available(region_to_predict, ref_colocated, mb_type_info, pred_info, constrained_intra_pred_flag), \
-      H264IntraCommon.up_left_available(region_to_predict, ref_colocated, mb_type_info, pred_info, constrained_intra_pred_flag)
+    return H264IntraCommon.left_available(region_to_predict, mb_type_info, pred_info, constrained_intra_pred_flag), \
+      H264IntraCommon.up_available(region_to_predict, mb_type_info, pred_info, constrained_intra_pred_flag), \
+      H264IntraCommon.up_left_available(region_to_predict, mb_type_info, pred_info, constrained_intra_pred_flag)
 
   def schedule_luma[E,E2,T,C](region_to_predict: View[E,T,C], ref_region: Block[E2,T,C], \
                               mb_type_info, pred_info, constrained_intra_pred_flag: bool, \
@@ -172,7 +165,7 @@ class H264Intra16x16:
     @ARG(bit_depth_Y)
     """
     ref_colocated = ref_region[region_to_predict]
-    left,up,up_left = H264Intra16x16.check_availability(region_to_predict, ref_colocated, mb_type_info, pred_info, constrained_intra_pred_flag)
+    left,up,up_left = H264Intra16x16.check_availability(region_to_predict, mb_type_info, pred_info, constrained_intra_pred_flag)
     preds: list[Optional[Block[E2,T,C]]] = [None, None, region_to_predict.shallow_cast[E2](), None]
     if up:
       preds[0] = region_to_predict.shallow_cast[E2]()
@@ -274,19 +267,18 @@ class H264Intra16x16:
 class H264Intra8x8:
 
 
-  def check_availability(region_to_predict, ref_colocated, pred_info, \
+  def check_availability(region_to_predict, pred_info, \
                          constrained_intra_pred_flag: bool) -> Tuple[bool,bool,bool,bool]:
     """
     Check left, up left, up, and up right availability.
     @ARG(region_to_predict, TO_PRED)
-    @ARG(ref_colocated, REF_COLOCATED)
     @ARG(pred_info, PRED_INFO)
     @ARG(constrained_intra_pred_flag, CONSTRAINED_INTRA_PRED_FLAG)
     """
-    return H264IntraCommon.left_available(region_to_predict, ref_colocated, pred_info, constrained_intra_pred_flag), \
-      H264IntraCommon.up_left_available(region_to_predict, ref_colocated, pred_info, constrained_intra_pred_flag), \
-      H264IntraCommon.up_available(region_to_predict, ref_colocated, pred_info, constrained_intra_pred_flag), \
-      H264IntraCommon.up_right_available(8, region_to_predict, ref_colocated, pred_info, constrained_intra_pred_flag)
+    return H264IntraCommon.left_available(region_to_predict, pred_info, constrained_intra_pred_flag), \
+      H264IntraCommon.up_left_available(region_to_predict, pred_info, constrained_intra_pred_flag), \
+      H264IntraCommon.up_available(region_to_predict, pred_info, constrained_intra_pred_flag), \
+      H264IntraCommon.up_right_available(8, region_to_predict, pred_info, constrained_intra_pred_flag)
 
   def schedule_luma[E,E2,T,C](region_to_predict: View[E,T,C], ref_region: Block[E2,T,C], \
                               pred_info, constrained_intra_pred_flag: bool, bit_depth_Y: int):
@@ -301,7 +293,7 @@ class H264Intra8x8:
     @ARG(bit_depth_Y)
     """
     ref_colocated = ref_region[region_to_predict]
-    left,up_left,up,up_right = H264Intra8x8.check_availability(region_to_predict, ref_colocated, pred_info, constrained_intra_pred_flag)
+    left,up_left,up,up_right = H264Intra8x8.check_availability(region_to_predict, pred_info, constrained_intra_pred_flag)
     filt_row,filt_col,up_right2 = H264Intra8x8.low_pass_filter(ref_colocated, up, left, up_right, up_left)
     up_right = up_right2
     preds: list[Optional[Block[E2,T,C]]] = [None, None, region_to_predict.shallow_cast[E2](), None, None, None, None, None, None]
@@ -487,12 +479,11 @@ class H264Intra8x8:
 
 class H264Intra4x4:
 
-  def up_right_available(region_to_predict, ref_colocated, mb_type_info, pred_info, \
+  def up_right_available(region_to_predict,  mb_type_info, pred_info, \
                          constrained_intra_pred_flag) -> bool:    
     """
     Check up right availability of region_to_predict in ref_colocated.
     @ARG(region_to_predict, TO_PRED)
-    @ARG(ref_colocated, REF_COLOCATED)
     @ARG(mb_type_info, MB_TYPE_INFO)
     @ARG(pred_info, PRED_INFO)
     @ARG(constrained_intra_pred_flag, CONSTRAINED_INTRA_PRED_FLAG)
@@ -502,11 +493,11 @@ class H264Intra4x4:
     mb_origin = region_to_predict.origin_relative_to(mb)     
     if mb_origin == (4,4) or mb_origin == (12,4): # idx 3 or idx 11
       return False
-    up_right = ref_colocated[-1,4]
+    up_right = region_to_predict[-1,4]
     return H264IntraCommon.check_params(region_to_predict, up_right, mb_type_info, pred_info, constrained_intra_pred_flag)
 
   # check left, up-left, up, and up-right
-  def check_availability(region_to_predict, ref_colocated, mb_type_info, pred_info, \
+  def check_availability(region_to_predict, mb_type_info, pred_info, \
                          constrained_intra_pred_flag: bool) -> Tuple[bool,bool,bool,bool]:
     """
     Check left, up left, up, and up right availability.
@@ -515,10 +506,10 @@ class H264Intra4x4:
     @ARG(pred_info, PRED_INFO)
     @ARG(constrained_intra_pred_flag, CONSTRAINED_INTRA_PRED_FLAG)
     """
-    return H264IntraCommon.left_available(region_to_predict, ref_colocated, mb_type_info, pred_info, constrained_intra_pred_flag), \
-      H264IntraCommon.up_left_available(region_to_predict, ref_colocated, mb_type_info, pred_info, constrained_intra_pred_flag), \
-      H264IntraCommon.up_available(region_to_predict, ref_colocated, mb_type_info, pred_info, constrained_intra_pred_flag), \
-      H264Intra4x4.up_right_available(region_to_predict, ref_colocated, mb_type_info, pred_info, constrained_intra_pred_flag)
+    return H264IntraCommon.left_available(region_to_predict, mb_type_info, pred_info, constrained_intra_pred_flag), \
+      H264IntraCommon.up_left_available(region_to_predict, mb_type_info, pred_info, constrained_intra_pred_flag), \
+      H264IntraCommon.up_available(region_to_predict, mb_type_info, pred_info, constrained_intra_pred_flag), \
+      H264Intra4x4.up_right_available(region_to_predict, mb_type_info, pred_info, constrained_intra_pred_flag)
  
   def schedule_luma[E,E2,T,C](region_to_predict: View[E,T,C], ref_region: Block[E2,T,C], \
                               mb_type_info, pred_info, constrained_intra_pred_flag: bool, \
@@ -535,7 +526,7 @@ class H264Intra4x4:
     @ARG(bit_depth_Y)
     """
     ref_colocated = ref_region[region_to_predict]
-    left,up_left,up,up_right = H264Intra4x4.check_availability(region_to_predict, ref_colocated, mb_type_info, pred_info, constrained_intra_pred_flag)
+    left,up_left,up,up_right = H264Intra4x4.check_availability(region_to_predict, mb_type_info, pred_info, constrained_intra_pred_flag)
     preds: list[Optional[Block[E2,T,C]]] = [None, None, region_to_predict.shallow_cast[E2](), None, None, None, None, None, None]
     if up:
       preds[0] = region_to_predict.shallow_cast[E2]()

@@ -1,7 +1,7 @@
 import internal.gc as gc
 from error import ColaError
 
-class RBits[N:int]:
+class FBits[N:int]:
   """
   A special bit sequence that shifts in bits. when full (nbits == N), 
   it drops off the MSB bits rather than packing them,
@@ -357,111 +357,111 @@ class Bits[N: int]:
   def __ne__[S:int](self, other: Bits[S]):
     return not (self == other)
  
-@extend
-class UInt[N: int]:
-
-  def __new__(val) -> UInt[N]:
-    return UInt[N].process(val)
-
-  def process[T: int](val: UInt[T]) -> UInt[N]:
-    if T == N:
-      return UInt[N].process_eq(val)
-    elif T < N:
-      return UInt[N].process_ext(val)
-    else:
-      return UInt[N].process_trunc(val)
-  def process(val: byte) -> UInt[N]:
-    if 8 == N:
-      return UInt[N].process_eq(val)
-    elif 8 < N:
-      return UInt[N].process_ext(val)
-    else:
-      return UInt[N].process_trunc(val)
-  def process(val: bool) -> UInt[N]:
-    if 1 == N:
-      return UInt[N].process_eq(val)
-    elif 1 < N:
-      return UInt[N].process_ext(val)
-    else:
-      return UInt[N].process_trunc(val)
-  @llvm
-  def process_trunc[T: int](val: UInt[T]) -> UInt[N]:
-    %0 = trunc i{=T} %val to i{=N}
-    ret i{=N} %0
-  @llvm
-  def process_ext[T: int](val: UInt[T]) -> UInt[N]:
-    %0 = zext i{=T} %val to i{=N}
-    ret i{=N} %0
-  @llvm
-  def process_eq[T: int](val: UInt[T]) -> UInt[N]:
-    ret i{=N} %val
-  @llvm
-  def process_trunc(val: byte) -> UInt[N]:
-    %0 = trunc i8 %val to i{=N}
-    ret i{=N} %0
-  @llvm
-  def process_ext(val: byte) -> UInt[N]:
-    %0 = zext i8 %val to i{=N}
-    ret i{=N} %0
-  @llvm
-  def process_eq(val: byte) -> UInt[N]:
-    ret i{=N} %val
-  @llvm
-  def process_trunc(val: bool) -> UInt[N]:
-    %0 = trunc i1 %val to i{=N}
-    ret i{=N} %0
-  @llvm
-  def process_ext(val: bool) -> UInt[N]:
-    %0 = zext i1 %val to i{=N}
-    ret i{=N} %0
-  @llvm
-  def process_eq(val: bool) -> UInt[N]:
-    ret i{=N} %val
+#@extend
+#class UInt[N: int]:
+#
+#  def __new__(val) -> UInt[N]:
+#    return UInt[N].process(val)
+#
+#  def process[T: int](val: UInt[T]) -> UInt[N]:
+#    if T == N:
+#      return UInt[N].process_eq(val)
+#    elif T < N:
+#      return UInt[N].process_ext(val)
+#    else:
+#      return UInt[N].process_trunc(val)
+#  def process(val: byte) -> UInt[N]:
+#    if 8 == N:
+#      return UInt[N].process_eq(val)
+#    elif 8 < N:
+#      return UInt[N].process_ext(val)
+#    else:
+#      return UInt[N].process_trunc(val)
+#  def process(val: bool) -> UInt[N]:
+#    if 1 == N:
+#      return UInt[N].process_eq(val)
+#    elif 1 < N:
+#      return UInt[N].process_ext(val)
+#    else:
+#      return UInt[N].process_trunc(val)
+#  @llvm
+#  def process_trunc[T: int](val: UInt[T]) -> UInt[N]:
+#    %0 = trunc i{=T} %val to i{=N}
+#    ret i{=N} %0
+#  @llvm
+#  def process_ext[T: int](val: UInt[T]) -> UInt[N]:
+#    %0 = zext i{=T} %val to i{=N}
+#    ret i{=N} %0
+#  @llvm
+#  def process_eq[T: int](val: UInt[T]) -> UInt[N]:
+#    ret i{=N} %val
+#  @llvm
+#  def process_trunc(val: byte) -> UInt[N]:
+#    %0 = trunc i8 %val to i{=N}
+#    ret i{=N} %0
+#  @llvm
+#  def process_ext(val: byte) -> UInt[N]:
+#    %0 = zext i8 %val to i{=N}
+#    ret i{=N} %0
+#  @llvm
+#  def process_eq(val: byte) -> UInt[N]:
+#    ret i{=N} %val
+#  @llvm
+#  def process_trunc(val: bool) -> UInt[N]:
+#    %0 = trunc i1 %val to i{=N}
+#    ret i{=N} %0
+#  @llvm
+#  def process_ext(val: bool) -> UInt[N]:
+#    %0 = zext i1 %val to i{=N}
+#    ret i{=N} %0
+#  @llvm
+#  def process_eq(val: bool) -> UInt[N]:
+#    ret i{=N} %val
 
       
 @extend
 class byte:
-
-  def __new__(val) -> byte:
-    return byte.process(val)
-
-  def process[T: int](val: Int[T]) -> byte:
-    if T == 8:
-      return byte.process_eq(val)
-    elif T < 8:
-      return byte.process_ext(val)
-    else:
-      return byte.process_trunc(val)
-
-  def process[T: int](val: UInt[T]) -> byte:
-    if T == 8:
-      return byte.process_eq(val)
-    elif T < 8:
-      return byte.process_ext(val)
-    else:
-      return byte.process_trunc(val)      
-  @llvm
-  def process_trunc[T: int](val: Int[T]) -> byte:
-    %0 = trunc i{=T} %val to i8
-    ret i8 %0
-  @llvm
-  def process_trunc[T: int](val: UInt[T]) -> byte:
-    %0 = trunc i{=T} %val to i8
-    ret i8 %0
-  @llvm
-  def process_ext[T: int](val: Int[T]) -> byte:
-    %0 = zext i{=T} %val to i8
-    ret i8 %0
-  @llvm
-  def process_ext[T: int](val: UInt[T]) -> byte:
-    %0 = zext i{=T} %val to i8
-    ret i8 %0
-  @llvm
-  def process_eq[T: int](val: Int[T]) -> byte:
-    ret i8 %val
-  @llvm
-  def process_eq[T: int](val: UInt[T]) -> byte:
-    ret i8 %val
+#
+#  def __new__(val) -> byte:
+#    return byte.process(val)
+#
+#  def process[T: int](val: Int[T]) -> byte:
+#    if T == 8:
+#      return byte.process_eq(val)
+#    elif T < 8:
+#      return byte.process_ext(val)
+#    else:
+#      return byte.process_trunc(val)
+#
+#  def process[T: int](val: UInt[T]) -> byte:
+#    if T == 8:
+#      return byte.process_eq(val)
+#    elif T < 8:
+#      return byte.process_ext(val)
+#    else:
+#      return byte.process_trunc(val)      
+#  @llvm
+#  def process_trunc[T: int](val: Int[T]) -> byte:
+#    %0 = trunc i{=T} %val to i8
+#    ret i8 %0
+#  @llvm
+#  def process_trunc[T: int](val: UInt[T]) -> byte:
+#    %0 = trunc i{=T} %val to i8
+#    ret i8 %0
+#  @llvm
+#  def process_ext[T: int](val: Int[T]) -> byte:
+#    %0 = zext i{=T} %val to i8
+#    ret i8 %0
+#  @llvm
+#  def process_ext[T: int](val: UInt[T]) -> byte:
+#    %0 = zext i{=T} %val to i8
+#    ret i8 %0
+#  @llvm
+#  def process_eq[T: int](val: Int[T]) -> byte:
+#    ret i8 %val
+#  @llvm
+#  def process_eq[T: int](val: UInt[T]) -> byte:
+#    ret i8 %val
   @llvm
   def __rshift__(self, other: byte) -> byte:
     %0 = ashr i8 %self, %other
@@ -471,68 +471,55 @@ class byte:
     %tmp = and i8 %a, %b
     ret i8 %tmp
 
-@extend
-class File:
-  
-  # T = bytes
-  def read_u[T: int](self) -> UInt[T*8]:
-    self._ensure_open()
-    buf = Ptr[byte](T)
-    assert _C.fread(buf, 1, T, self.fp) == T
-    self._errcheck("error in read")
-    return buf.convert_u[T*8]()
-
-  def read_s[T: int](self) -> Int[T*8]:
-    self._ensure_open()
-    buf = Ptr[byte](T)
-    assert _C.fread(buf, 1, T, self.fp) == T
-    self._errcheck("error in read")
-    return buf.convert_s[T*8]()
-
-  def read_b(self) -> byte:
-    self._ensure_open()
-    buf = Ptr[byte](1)
-    assert _C.fread(buf, 1, 1, self.fp) == 1
-    self._errcheck("error in read")    
-    return buf[0]
-
-  def read_into[T](self, buf: Ptr[T], sz: int=1, nelems:int=1, offset:int = 0):
-    self._ensure_open()
-    assert _C.fread((buf+offset).as_byte(), sz, nelems, self.fp) == nelems
-    self._errcheck("error in read")          
+#@extend
+#class File:
+#  
+#  # T = bytes
+#  def read_u[T: int](self) -> UInt[T*8]:
+#    self._ensure_open()
+#    buf = Ptr[byte](T)
+#    assert _C.fread(buf, 1, T, self.fp) == T
+#    self._errcheck("error in read")
+#    return buf.convert_u[T*8]()
+#
+#  def read_s[T: int](self) -> Int[T*8]:
+#    self._ensure_open()
+#    buf = Ptr[byte](T)
+#    assert _C.fread(buf, 1, T, self.fp) == T
+#    self._errcheck("error in read")
+#    return buf.convert_s[T*8]()
+#
+#  def read_b(self) -> byte:
+#    self._ensure_open()
+#    buf = Ptr[byte](1)
+#    assert _C.fread(buf, 1, 1, self.fp) == 1
+#    self._errcheck("error in read")    
+#    return buf[0]
+#
+#  def read_into[T](self, buf: Ptr[T], sz: int=1, nelems:int=1, offset:int = 0):
+#    self._ensure_open()
+#    assert _C.fread((buf+offset).as_byte(), sz, nelems, self.fp) == nelems
+#    self._errcheck("error in read")          
 
 @extend
 class Ptr[T]:
   def resize(self, new_cap: int) -> Ptr[T]:
     return Ptr[T](gc.realloc(self, new_cap * gc.sizeof[T]()))
-  @llvm
-  def convert_u[N: int](self) -> UInt[N]:
-    %0 = bitcast {=T}* %self to i{=N}*
-    %1 = load i{=N}, i{=N}* %0 
-    ret i{=N} %1  
-  @llvm
-  def convert_s[N: int](self) -> Int[N]:
-    %0 = bitcast {=T}* %self to i{=N}*
-    %1 = load i{=N}, i{=N}* %0 
-    ret i{=N} %1    
-
-@extend
-class float:
-  def __new__(i) -> float:
-    return float._to_float(i)
-  @llvm
-  def _to_float[N:int](i: UInt[N]) -> float:
-    %0 = uitofp i{=N} %i to double
-    ret double %0
-  @llvm
-  def _to_float[N:int](i: Int[N]) -> float:
-    %0 = sitofp i{=N} %i to double
-    ret double %0
+#  @llvm
+#  def convert_u[N: int](self) -> UInt[N]:
+#    %0 = bitcast {=T}* %self to i{=N}*
+#    %1 = load i{=N}, i{=N}* %0 
+#    ret i{=N} %1  
+#  @llvm
+#  def convert_s[N: int](self) -> Int[N]:
+#    %0 = bitcast {=T}* %self to i{=N}*
+#    %1 = load i{=N}, i{=N}* %0 
+#    ret i{=N} %1    
 
 @test
 def do_test():
   print 'Running bits.seq tests'
-  rbits = RBits[5]()
+  rbits = FBits[5]()
   rbits.pack(1)
   rbits.pack(0)
   rbits.pack(0)
