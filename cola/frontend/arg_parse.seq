@@ -129,6 +129,7 @@ class ArgOpt:
     self.int_val = None 
     self.int_val_lower = None
     self.int_val_upper = None
+    self.float_val = None
     self.float_val_lower = None
     self.float_val_upper = None
     self.str_val = None
