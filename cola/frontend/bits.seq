@@ -528,6 +528,10 @@ class float:
   def _to_float[N:int](i: Int[N]) -> float:
     %0 = sitofp i{=N} %i to double
     ret double %0
+  @llvm
+  def _to_float(i: bool) -> float:
+    %0 = sitofp i8 %i to double
+    ret double %0
 
 @test
 def do_test():
