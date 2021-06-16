@@ -1,0 +1,53 @@
+from ..cola.frontend.bits import *
+import sys
+
+# codewords must be < length 64
+
+fn = sys.argv[1]
+fd = open(fn, 'r')
+
+first = True
+dims = None
+all_data = []
+b = Bits[64]()
+for line in fd:
+  line = line.strip()
+  if line == '':
+    continue
+  if line[0] == '#':
+    continue
+  elif first:
+    sdims = line.split(' ')
+    dims = [int(d.strip()) for d in sdims]
+    first = False
+  else:
+    data = [l for l in line.split(' ') if l]
+    for d in data:
+      b.clear()
+      d = d.strip()
+      nbits = len(d)
+      assert nbits < 64
+      found_dash = False
+      for bit in d:
+        if bit == '0':
+          b.pack(0,1)
+        elif bit == '1':
+          b.pack(1,1)
+        elif bit == '-':
+          found_dash = True
+          break
+        else:
+          print(bit)
+          assert False 
+      if found_dash:
+        all_data.append((UInt[64](0),-1))
+      else:
+        all_data.append((b.unpack(nbits), nbits))
+      
+fd.close()
+print(all_data)
+fd = open(fn + '.seq', 'w')
+fd.write('from ..cola.frontend.block import *\n')
+fd.write('Block.make((' + ','.join([str(dm) for dm in dims]) + '), ' + str(all_data) + ')\n')
+fd.flush()
+fd.close()
