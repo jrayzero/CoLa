@@ -8,6 +8,9 @@ P_SLICE = 1
 B_SLICE = 2
 SI_SLICE = 3
 SP_SLICE = 4
+P_SKIP = 5
+B_SKIP = 6
+I_PCM = 7
 
 # intraprediction sizes
 INTRA_4x4 = 0

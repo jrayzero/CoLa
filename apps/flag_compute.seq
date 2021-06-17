@@ -75,4 +75,3 @@ class Flag:
 
   def RawMbBits(BitDepthY:int, MbWidthC:int, MbHeightC:int, BitDepthC:int):
     256 * BitDepthY + 2 * MbWidthC * MbHeightC * BitDepthC
-  
