@@ -18,34 +18,34 @@ class CAVLC:
     else:
       return -2
 
-  def available_flag_A(region, pred_info, \
-                       constrained_intra_pred_flag, nal_unit_type):
+  def available_flag_A[E,T,C](coeffs: View[E,T,C], pred_info, \
+                              constrained_intra_pred_flag, nal_unit_type):
     """
     Standard section 9.2.1, compute if left block
     available.
     """
-    left = region[0,-1]
+    left = coeffs[0,-1]
     if not left.exists():
       return False
-    if pred_info[region] and constrained_intra_pred_flag and not pred_info[left] and 2 <= nal_unit_type <= 4:
+    if pred_info[coeffs] and constrained_intra_pred_flag and not pred_info[left] and 2 <= nal_unit_type <= 4:
       return False
     return True
           
-  def available_flag_B(region, pred_info, \
-                       constrained_intra_pred_flag, nal_unit_type):
+  def available_flag_B[E,T,C](coeffs: View[E,T,C], pred_info, \
+                              constrained_intra_pred_flag, nal_unit_type):
     """
     Standard section 9.2.1, compute if upper block
     available.
     """
-    upper = region[-1,0]
+    upper = coeffs[-1,0]
     if not upper.exists():
       return False
-    if pred_info[region] and constrained_intra_pred_flag and not pred_info[upper] and 2 <= nal_unit_type <= 4:
+    if pred_info[coeffs] and constrained_intra_pred_flag and not pred_info[upper] and 2 <= nal_unit_type <= 4:
       return False
     return True
 
-  def nA(region, mb_type_info, coded_block_pattern: bool, total_coeffs_info):
-    left = region[0,-1]
+  def nA[E,T,C](coeffs: View[E,T,C], mb_type_info, coded_block_pattern: bool, total_coeffs_info):
+    left = coeffs[0,-1]
     if mb_type_info[left] == P_SKIP or mb_type_info[left] == B_SKIP:
       return 0
     elif mb_type_info[left] != I_PCM and coded_block_pattern:
@@ -55,8 +55,8 @@ class CAVLC:
     else:
       return total_coeffs_info[left]
 
-  def nB(region, mb_type_info, coded_block_pattern: bool, total_coeffs_info):
-    upper = region[-1,0]
+  def nB[E,T,C](coeffs: View[E,T,C], mb_type_info, coded_block_pattern: bool, total_coeffs_info):
+    upper = coeffs[-1,0]
     if mb_type_info[upper] == P_SKIP or mb_type_info[upper] == B_SKIP:
       return 0
     elif mb_type_info[upper] != I_PCM and coded_block_pattern:
@@ -66,55 +66,42 @@ class CAVLC:
     else:
       return total_coeffs_info[upper]
 
-  def nC(region, available_flag_A, available_flag_B, mb_type_info, coded_block_pattern: bool, total_coeffs_info):
+  def nC[E,T,C](coeffs: View[E,T,C], available_flag_A, available_flag_B, mb_type_info, coded_block_pattern: bool, total_coeffs_info):
     # total_coeffs_info = flags
     if available_flag_A and available_flag_B:
-      nA = CAVLC.nA(region, mb_type_info, coded_block_pattern, total_coeffs_info)
-      nB = CAVLC.nB(region, mb_type_info, coded_block_pattern, total_coeffs_info)
+      nA = CAVLC.nA(coeffs, mb_type_info, coded_block_pattern, total_coeffs_info)
+      nB = CAVLC.nB(coeffs, mb_type_info, coded_block_pattern, total_coeffs_info)
       return (nA + nB + 1) >> 1
     elif available_flag_A:
-      return CAVLC.nA(region, mb_type_info, coded_block_pattern, total_coeffs_info)
+      return CAVLC.nA(coeffs, mb_type_info, coded_block_pattern, total_coeffs_info)
     elif available_flag_B:
-      return CAVLC.nB(region, mb_type_info, coded_block_pattern, total_coeffs_info)
+      return CAVLC.nB(coeffs, mb_type_info, coded_block_pattern, total_coeffs_info)
     else:
       return 0    
 
   # TODO figure out this coded_block_pattern (seems to only be for 8x8 blocks)!!
-  def encode(coeffs, pred_info, mb_type_info, total_coeffs_info, coded_block_pattern: bool, 
-             nal_unit_type: int, constrained_intra_pred_flag: bool):
+  def encode[E,T,C](coeffs: View[E,T,C], pred_info, mb_type_info, total_coeffs_info, coded_block_pattern: bool, 
+                    nal_unit_type: int, constrained_intra_pred_flag: bool):
     """
     Encode one block of quantized coefficients with CAVLC.
     total_coeffs_info stores the number of zeros in each 4x4 block for the leaves. See #6 in 9.2.1. 
     The nA,nB,nC functions will determine how to interpret the numbers in this.
     """
     total_coeffs,trailing_ones,total_zeros,nonzero_coeffs,zero_runs = CAVLC.gather_stats(coeffs)
-    print('nonzero_coeffs ' + str(nonzero_coeffs))
-    print('total_zeros ' + str(total_zeros))
     ntrailing_ones = len(trailing_ones)
     bits = Bits[64]()
     # figure out nC so we know what VLC table to use
     available_flag_A = CAVLC.available_flag_A(coeffs, pred_info, constrained_intra_pred_flag, nal_unit_type)
-    print('A ' + str(available_flag_A))
     available_flag_B = CAVLC.available_flag_B(coeffs, pred_info, constrained_intra_pred_flag, nal_unit_type)    
-    print('B ' + str(available_flag_B))
     nC = CAVLC.nC(coeffs, available_flag_A, available_flag_B, mb_type_info, coded_block_pattern, total_coeffs_info)
-    print('nC ' + str(nC))
     # encode the various pieces
-    print(bits)
     CAVLC.encode_coeff_token(nC, ntrailing_ones, total_coeffs, bits)
-    print(bits)
     CAVLC.encode_trailing_ones(trailing_ones, bits)
-    print(bits)
     CAVLC.encode_levels(total_coeffs, nonzero_coeffs, ntrailing_ones, bits)
-    print(bits)
     CAVLC.encode_total_zeros(total_coeffs, total_zeros, coeffs.nunits(), bits)
-    print(bits)
     CAVLC.encode_runs(total_coeffs, coeffs.nunits(), total_zeros, zero_runs, bits)
-    print(bits)
     # update flagtree
-    print(total_coeffs_info)
     total_coeffs_info[coeffs] = total_coeffs
-    print(total_coeffs_info)
     return bits
 
   def encode_coeff_token[T:int](nC: int, ntrailing_ones: int, total_coeffs: int, bits: Bits[T]):
@@ -129,12 +116,7 @@ class CAVLC:
       nC_idx = 4
     elif nC == -2:
       nC_idx = 5
-    print('ntrailing_ones ' + str(ntrailing_ones))
-    print('total_coeffs ' + str(total_coeffs))
-    print('nC_idx ' + str(nC_idx))
     val,nbits = CAVLCTables.tbl_9_5(ntrailing_ones, total_coeffs, nC_idx)
-    print('val ' + str(val))
-    print('nbits ' + str(nbits))
     assert nbits != -1 # sanity check to make sure don't grab an invalid entry
     bits.pack(val, nbits)
     
@@ -152,7 +134,6 @@ class CAVLC:
     if total_coeffs > 10 and ntrailing_ones < 3:
       suffix_length = 1  
     for coeff in nzcoeffs:
-      print('coeff ' + str(coeff))
       level_suffix = level_prefix = level_suffix_size = 0
       level_code = 2 * abs(coeff) - (1 if coeff < 0 else 2)
       if i == ntrailing_ones and ntrailing_ones < 3:
@@ -205,8 +186,6 @@ class CAVLC:
     tlvlc_idx = total_coeffs
     zeros_left = 0 if max_num_coeff == total_coeffs else total_zeros
     lz = len(zero_runs)
-    print('zero runs ' + str(zero_runs))
-    print('zeros left ' + str(zeros_left))
     for i in range(total_coeffs-1):
       if zeros_left > 0:
         run_before = zero_runs[i]
@@ -215,7 +194,7 @@ class CAVLC:
         zeros_left -= run_before
         assert zeros_left >= 0 # sanity check
   
-  def gather_stats(coeffs):
+  def gather_stats[E,T,C](coeffs: View[E,T,C]):
     total_coeffs = 0
     trailing_ones = RBits[3]() # these can have zeros in between them
     trailing_zeros = 0#RBits[16]() # zeros that occur after the last non-zero. Used to compute total zeros
@@ -287,24 +266,34 @@ class CAVLCTables:
 def do_test():
   # using examples from Richardson's book
   mb_skeleton = Block.make[int](16,16)
-  coeff_block_1 = Block(mb_skeleton[:4,:4])
-  coeff_block_2 = Block(mb_skeleton[:4,:4])
-  coeff_block_3 = Block(mb_skeleton[:4,:4])
-  coeff_block_4 = Block(mb_skeleton[:4,4:8])
-  coeff_block_1[:,:] = [0,3,-1,0,0,-1,1,0,1,0,0,0,0,0,0,0]
-  coeff_block_2[:,:] = [-2,4,0,-1,3,0,0,0,-3,0,0,0,0,0,0,0]
-  coeff_block_3[:,:] = [0,0,1,0,0,0,0,0,1,0,0,0,-1,0,0,0]
-  coeff_block_4[:,:] = [0,0,1,0,0,0,0,0,1,0,0,0,-1,0,0,0]
   pred_info = FlagTree(True, mb_skeleton)
   pred_info.set_cover_unstrict(mb_skeleton[:4,:4], True)
-  pred_info.set_cover_unstrict(coeff_block_4, True)
   mb_type_info = FlagTree(I_SLICE, mb_skeleton)
   total_coeffs_info = FlagTree(-1, mb_skeleton)
   total_coeffs_info.set_cover_unstrict(mb_skeleton[:4,:4], -1)
-  total_coeffs_info.set_cover_unstrict(coeff_block_4, -1)
-  coded_block_1 = CAVLC.encode(coeff_block_1, pred_info, mb_type_info, total_coeffs_info, False, 0, False)
+
+  # COEFF 1
+  coeff_1 = mb_skeleton[:4,:4]
+  coeff_1[:,:] = [0,3,-1,0,0,-1,1,0,1,0,0,0,0,0,0,0]
+  coded_block_1 = CAVLC.encode(coeff_1, pred_info, mb_type_info, total_coeffs_info, False, 0, False)
   assert coded_block_1 == '000010001110010111101101'
-  coded_block_2 = CAVLC.encode(coeff_block_2, pred_info, mb_type_info, total_coeffs_info, False, 0, False)
+
+  # COEFF 2
+  coeff_2 = mb_skeleton[:4,:4]
+  coeff_2[:,:] = [-2,4,0,-1,3,0,0,0,-3,0,0,0,0,0,0,0]
+  coded_block_2 = CAVLC.encode(coeff_2, pred_info, mb_type_info, total_coeffs_info, False, 0, False)
   assert coded_block_2 == '000000011010001001000010111001100'
-  coded_block_3 = CAVLC.encode(coeff_block_3, pred_info, mb_type_info, total_coeffs_info, False, 0, False)
+
+  # COEFF 3
+  coeff_3 = mb_skeleton[:4,:4]
+  coeff_3[:,:] = [0,0,1,0,0,0,0,0,1,0,0,0,-1,0,0,0]
+  coded_block_3 = CAVLC.encode(coeff_3, pred_info, mb_type_info, total_coeffs_info, False, 0, False)
   assert coded_block_3 == '0001110001110010'
+
+  # COEFF 4
+  coeff_4 = mb_skeleton[:4,4:8]
+  coeff_4[:,:] = [-2,4,0,-1,3,0,0,0,-3,0,0,0,0,0,0,0]
+  pred_info.set_cover_unstrict(coeff_4, True)
+  total_coeffs_info.set_cover_unstrict(coeff_4, -1)
+  coded_block_4 = CAVLC.encode(coeff_4, pred_info, mb_type_info, total_coeffs_info, False, 0, False)
+  assert coded_block_4 == '000011010001001000010111001100'
