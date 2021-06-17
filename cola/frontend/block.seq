@@ -179,6 +179,12 @@ class Multidim[E,T,C]:
     Return the dimensions of self
     """
     return self._dims
+  
+  def cgrid_mapping(self) -> C:
+    """
+    Return the cgrid_mapping of self
+    """
+    return self._cgrid_mapping
 
   def nunits(self) -> int:
     """
@@ -374,6 +380,11 @@ class Multidim[E,T,C]:
     Indexing is allowed to use either 1 or N indices. If there is 1 index, it 
     corresponds to a linear index within self. All indices are relative to self.
     """
+    total_idxs = 1 + staticlen(idxs)
+    if total_idxs != 1 and total_idxs != staticlen(self._dims):
+#      print('TOTAL IDXS ' + str(total_idxs))
+#      print('DIMS ' + str(staticlen(self.dims)))
+      raise ColaError()
     for idx in idxs:
       # TODO does this statically assert ?
       Multidim.check_int(idx)
@@ -596,6 +607,16 @@ class Multidim[E,T,C]:
     sliced = self[idxs]
     for s in range(sliced.nunits()):
       sliced._buffer[sliced.remap_local_lidx_to_buffer_lidx[1](s)] = item
+
+  def __setitem__(self, idxs, items: list[E]):
+    """
+    Write all items in list to region.
+    """
+    sliced = self[idxs]
+    if sliced.nunits() != len(items):
+      raise ColaError()
+    for s in range(sliced.nunits()):
+      sliced._buffer[sliced.remap_local_lidx_to_buffer_lidx[1](s)] = items[s]
 
   def __setitem__[T2,C2](self, idxs, item: Multidim[E,T2,C2]):
     """
@@ -844,6 +865,9 @@ class Block[E,T,C]:
   def dims(self) -> T:
     return self.base.dims()
 
+  def cgrid_mapping(self):
+    return self.base.cgrid_mapping()
+
   def nunits(self) -> int:
     return self.base.nunits()
 
@@ -1002,6 +1026,9 @@ class View[E,T,C]:
 
   def dims(self) -> T:
     return self.base.dims()
+
+  def cgrid_mapping(self):
+    return self.base.cgrid_mapping()
 
   def nunits(self) -> int:
     return self.base.nunits()

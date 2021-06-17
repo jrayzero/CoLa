@@ -15,7 +15,13 @@ class FlagTree[E,T,C,F]:
   You can incrementally build up the tree too. This does not check that your partitions
   don't overlap and what not because that would be expensive. 
 
-  There are several ways to access a FlagTree. See __getitem__, __setitem__, leaf_match, any_match.
+  Access semantics:
+  ** __getitem__: looks for the leaf that completely encapsulates the region specified. Fails if doesn't exist.
+  ** get_cover: looks for any node in the tree that MATCHES (i.e. has same coverage) as the region specified. Fails if doesn't exist.
+  ** __setitem__: looks for the leaf that completely encapsulates the region specified and sets the flag. Fails if doesn't exist.
+  ** NOT YET set_leaf_unstrict: looks for the leaf that completely encapsulates the region specified and sets the flag. Adds region if doesn't exist.
+  ** set_cover: looks for any node in the tree that MATCHES (i.e. has same coverage) as the region specified and sets the flag. Fails if doesn't exist.
+  ** set_cover_unstrict: looks for any node in the tree that MATCHES (i.e. has same coverage) as the region specified and sets the flag. Adds region if doesn't exist.
   
   This is purely a location-based search, so you can use views and blocks of different element types
   to index.
@@ -50,49 +56,61 @@ class FlagTree[E,T,C,F]:
   def add_child(self, child: FlagTree[E,T,C,F]):
     self.children.append(child)
 
-  # TODO support reading/writing from multiple flags values if obj spans over multiple nodes
-  # TODO if I had a separate getitem wrapper, I wouldn't have to check containment in the base case
-  # each time (cause other than the first iteration, the base case is only reached IF obj is fully contained
-  # in self.) Same goes for setitem
+  def __getitem__[E2](self, obj: Block[E2,T,C]) -> F:
+    return self[View(obj)]
 
-  def _getitem(self, obj) -> F:
+  def __getitem__[E2](self, obj: View[E2,T,C]) -> F:
+    """
+    Looks for the leaf that completely encapsulates the region specified. Fails if doesn't exist.
+    """
+    if not obj.base.fully_contained(self.value.base):
+      raise ColaError('obj does not have appropriate location in tree') 
+    if len(self.children) == 0:
+      return self.flag      
+    else:
+      return self._getitem_inner(obj)
+
+  def _getitem_inner(self, obj) -> F:
     if len(self.children) == 0:
       return self.flag
     else:
       for child in self.children:
         if obj.base.fully_contained(child.value.base):
-          return child._getitem(obj)
+          return child._getitem_inner(obj)
       # didn't find a node
       raise ColaError('obj does not have appropriate location in tree')
 
-  def __getitem__[E2](self, obj: View[E2,T,C]) -> F:
-    """
-    Get flag value out of the leaf that completely encapsluates obj (or fail if does not exist).
-    """
-    if len(self.children) == 0:
-      if obj.base.fully_contained(self.value.base):
-        return self.flag      
-      else:
-        raise ColaError('obj does not have appropriate location in tree') 
-    else:
-      return self._getitem(obj)
+  def get_cover[E2](self, obj: Block[E2,T,C]) -> F:
+    return self.get_cover(View(obj))
 
-  def _setitem(self, obj, flag):
-    if len(self.children) == 0:
-      self.flag = flag
-    else:
-      found = False
-      for child in self.children:
-        if obj.base.fully_contained(child.value.base):
-          child[obj] = flag
-          found = True
-          break
-      if not found:
-        raise ColaError('obj does not have appropriate location in tree')
+  def get_cover[E2](self, obj: View[E2,T,C]) -> F:
+    if self.value.dims() == obj.dims() and self.value.cgrid_mapping() == obj.cgrid_mapping():
+      return self.flag
+    elif len(self.children) == 0:
+      raise ColaError('obj does not have appropriate location in tree')
+    if not obj.base.fully_contained(self.value.base):
+      raise ColaError('obj does not have appropriate location in tree')
+    for child in self.children:
+      if obj.base.fully_contained(child.value.base):
+        return child._get_cover_inner(obj)
+    raise ColaError('obj does not have appropriate location in tree')
+
+  def _get_cover_inner(self, obj) -> F:
+    if self.value.dims() == obj.dims() and self.value.cgrid_mapping() == obj.cgrid_mapping():
+      return self.flag
+    elif len(self.children) == 0:
+      raise ColaError('obj does not have appropriate location in tree')
+    for child in self.children:
+      if obj.base.fully_contained(child.value.base):
+        return child._get_cover_inner(obj)
+    raise ColaError('obj does not have appropriate location in tree')
+
+  def __setitem__[E2](self, obj: Block[E2,T,C], flag: F):
+    self[View(obj)] = flag
 
   def __setitem__[E2](self, obj: View[E2,T,C], flag: F):
     """
-    Set flag value out for the leaf that completely encapsluates obj (or fail if does not exist)
+    Looks for the leaf that completely encapsulates the region specified and sets the flag. Fails if doesn't exist.
     """    
     if not obj.base.fully_contained(self.value.base):
       raise ColaError('obj does not have appropriate location in tree')
@@ -102,148 +120,250 @@ class FlagTree[E,T,C,F]:
       found = False
       for child in self.children:
         if obj.base.fully_contained(child.value.base):
-          child._setitem(obj, flag)
+          child._setitem_inner(obj, flag)
           found = True
           break
       if not found:
         raise ColaError('obj does not have appropriate location in tree')
 
-  def _leaf_match(self, obj, flag):
+  def _setitem_inner(self, obj, flag):
     if len(self.children) == 0:
-      if obj.base.is_same_region(self.value.base):
-        # change this flag
-        self.flag = flag
-      else:
-        # If we are here, it didn't exist, so make a node and set it
-        ft = FlagTree(flag, obj)
-        self.add_child(ft)
+      self.flag = flag
     else:
       found = False
       for child in self.children:
         if obj.base.fully_contained(child.value.base):
-          child._leaf_match(obj, flag)
+          child._setitem_inner(obj, flag)
           found = True
+          break
       if not found:
         raise ColaError('obj does not have appropriate location in tree')
 
-  def leaf_match[E2](self, obj: View[E2,T,C], flag: F):
-    """
-    See if obj has a leaf node that exactly matches it. If yes,
-    set the flag. Otherwise, add in the node in the appropriate location
-    and set the flag.
-    """
+  def set_cover[E2](self, obj: Block[E2,T,C], flag: F):
+    self.set_cover(View(obj), flag)
+
+  def set_cover[E2](self, obj: View[E2,T,C], flag: F):
+    if self.value.dims() == obj.dims() and self.value.cgrid_mapping() == obj.cgrid_mapping():
+      self.flag = flag
+      return
+    elif len(self.children) == 0:
+      raise ColaError('obj does not have appropriate location in tree')
     if not obj.base.fully_contained(self.value.base):
       raise ColaError('obj does not have appropriate location in tree')
-    if len(self.children) == 0:
-      if obj.base.is_same_region(self.value.base):
-        # change this flag
-        self.flag = flag
-      else:
-        # If we are here, it didn't exist, so make a node and set it      
-        ft = FlagTree(flag, obj)
-        self.add_child(ft)      
-    else:
-      self._leaf_match(obj, flag)
-
-  def _leaf_match(self, obj) -> F:
-    if len(self.children) == 0:
-      if obj.base.is_same_region(self.value.base):
-        return self.flag
-      else:
-        raise ColaError('obj does not have appropriate location in tree')
-    else:
-      for child in self.children:
-        if obj.base.fully_contained(child.value.base):
-          return child._leaf_match(obj)
+    found = False
+    for child in self.children:
+      if obj.base.fully_contained(child.value.base):
+        found = True
+        child._set_cover_inner(obj, flag)
+        break
+    if not found:
+      raise ColaError('obj does not have appropriate location in tree')
+    
+  def _set_cover_inner[E2](self, obj: View[E2,T,C], flag: F):
+    if self.value.dims() == obj.dims() and self.value.cgrid_mapping() == obj.cgrid_mapping():
+      self.flag = flag
+      return
+    elif len(self.children) == 0:
+      raise ColaError('obj does not have appropriate location in tree')
+    found = False
+    for child in self.children:
+      if obj.base.fully_contained(child.value.base):
+        found = True
+        child._set_cover_inner(obj, flag)
+        break
+    if not found:
       raise ColaError('obj does not have appropriate location in tree')
 
-  def leaf_match[E2](self, obj: View[E2,T,C]) -> F:
-    """
-    See if obj has a leaf node that exactly matches it. If yes,
-    get the flag. Otherwise, fail.
-    """ 
-    if obj.base.fully_contained(self.value.base):
-      raise ColaError('obj does not have appropriate location in tree')
-    if len(self.children) == 0:
-      if obj.base.is_same_region(self.value.base):
-        return self.flag
-      else:
-        raise ColaError('obj does not have appropriate location in tree')        
-    else:
-      return self._leaf_match(obj)
+  def set_cover_unstrict[E](self, obj: Block[E,T,C], flag: F):
+    self.set_cover_unstrict(View(obj), flag)
 
-  def _any_match(self, obj, flag):
-    if len(self.children) == 0:
-      if obj.base.is_same_region(self.value.base):
-        # change this flag
-        self.flag = flag
-      else:
-        # If we are here, it didn't exist, so make a node and set it      
-        ft = FlagTree(flag, obj)
-        self.add_child(ft)    
-    else:
-      if obj.base.is_same_region(self.value.base):
-        # change this flag
-        self.flag = flag
-      else:
-        found = False
-        for child in self.children:
-          if obj.base.fully_contained(child.value.base):
-            child._any_match(obj, flag)            
-            found = True
-            break
-        if not found:
-          # if reached here, then we can't go down another level, so we add ourself here    
-          ft = FlagTree(flag, obj)
-          self.add_child(ft)
-
-  def any_match[E2](self, obj: View[E2,T,C], flag: F):
+  def set_cover_unstrict[E](self, obj: View[E,T,C], flag: F):
     """
-    See if view has a leaf node that exactly matches it. If yes,
-    set the flag. Otherwise, add in the node in the appropriate location
-    and set the flag.
+    CAUTION: this function does not check that you add non-overlapping regions (neither
+    does PTree cause it's too expensive). Obviously
+    overlapping regions are fine for children blocks, but not good for siblings. If there 
+    are overlapping siblings (that both match the coverage), then doing a getitem-like operation
+    later will return the first of the possibly-overlapping options, which is probably not what you want.
     """
-    if not obj.base.fully_contained(self.value.base):
-      raise ColaError('obj does not have appropriate location in tree')
+    if self.value.dims() == obj.dims() and self.value.cgrid_mapping() == obj.cgrid_mapping():
+      self.flag = flag
+      return
     if len(self.children) == 0:
-      if obj.base.is_same_region(self.value.base):
-        # change this flag
-        self.flag = flag
-      else:
-        # If we are here, it didn't exist, so make a node and set it      
+      # in this case, we have to try adding new node here
+      if obj.base.fully_contained(self.value.base):
         ft = FlagTree(flag, obj)
         self.add_child(ft)
-    else:
-      self._any_match(obj, flag)
-
-  def _any_match(self, obj) -> F:
-    if len(self.children) == 0:
-      if obj.base.is_same_region(self.value.base):
-        return self.flag
+        return
       else:
         raise ColaError('obj does not have appropriate location in tree')
-    else:
-      if obj.base.is_same_region(self.value.base):
-        return self.flag
-      for child in self.children:
-        if obj.base.fully_contained(child.value.base):
-          return child._any_match(obj)
-      raise ColaError('obj does not have appropriate location in tree')
-
-  def any_match[E2](self, obj: View[E2,T,C]) -> F:
-    """
-    See if view has a leaf node that exactly matches it. If yes,
-    get the flag. Otherwise, fail.
-    """
     if not obj.base.fully_contained(self.value.base):
       raise ColaError('obj does not have appropriate location in tree')
+    found = False
+    for child in self.children:
+      if obj.base.fully_contained(child.value.base):
+        found = True
+        child._set_cover_unstrict_inner(obj, flag)
+        break
+    if not found:
+      # didn't find it, need to add here
+      ft = FlagTree(flag, obj)
+      self.add_child(ft)
+
+  def _set_cover_unstrict_inner[E](self, obj: View[E,T,C], flag: F):
+    if self.value.dims() == obj.dims() and self.value.cgrid_mapping() == obj.cgrid_mapping():
+      self.flag = flag
+      return
     if len(self.children) == 0:
-      if obj.base.is_same_region(self.value.base):
-        return self.flag
-      else:
-        raise ColaError('obj does not have appropriate location in tree')
-    else:
-      return self._any_match(obj)
+      ft = FlagTree(flag, obj)
+      self.add_child(ft)
+      return
+    found = False
+    for child in self.children:
+      if obj.base.fully_contained(child.value.base):
+        found = True
+        child._set_cover_unstrict_inner(obj, flag)
+        break
+    if not found:
+      # didn't find it, need to add here
+      ft = FlagTree(flag, obj)
+      self.add_child(ft)
+
+#  def _leaf_match(self, obj, flag):
+#    if len(self.children) == 0:
+#      if obj.base.is_same_region(self.value.base):
+#        # change this flag
+#        self.flag = flag
+#      else:
+#        # If we are here, it didn't exist, so make a node and set it
+#        ft = FlagTree(flag, obj)
+#        self.add_child(ft)
+#    else:
+#      found = False
+#      for child in self.children:
+#        if obj.base.fully_contained(child.value.base):
+#          child._leaf_match(obj, flag)
+#          found = True
+#      if not found:
+#        raise ColaError('obj does not have appropriate location in tree')
+#
+#  def leaf_match[E2](self, obj: View[E2,T,C], flag: F):
+#    """
+#    See if obj has a leaf node that exactly matches it. If yes,
+#    set the flag. Otherwise, add in the node in the appropriate location
+#    and set the flag.
+#    """
+#    if not obj.base.fully_contained(self.value.base):
+#      raise ColaError('obj does not have appropriate location in tree')
+#    if len(self.children) == 0:
+#      if obj.base.is_same_region(self.value.base):
+#        # change this flag
+#        self.flag = flag
+#      else:
+#        # If we are here, it didn't exist, so make a node and set it      
+#        ft = FlagTree(flag, obj)
+#        self.add_child(ft)      
+#    else:
+#      self._leaf_match(obj, flag)
+#
+#  def _leaf_match(self, obj) -> F:
+#    if len(self.children) == 0:
+#      if obj.base.is_same_region(self.value.base):
+#        return self.flag
+#      else:
+#        raise ColaError('obj does not have appropriate location in tree')
+#    else:
+#      for child in self.children:
+#        if obj.base.fully_contained(child.value.base):
+#          return child._leaf_match(obj)
+#      raise ColaError('obj does not have appropriate location in tree')
+#
+#  def leaf_match[E2](self, obj: View[E2,T,C]) -> F:
+#    """
+#    See if obj has a leaf node that exactly matches it. If yes,
+#    get the flag. Otherwise, fail.
+#    """ 
+#    if obj.base.fully_contained(self.value.base):
+#      raise ColaError('obj does not have appropriate location in tree')
+#    if len(self.children) == 0:
+#      if obj.base.is_same_region(self.value.base):
+#        return self.flag
+#      else:
+#        raise ColaError('obj does not have appropriate location in tree')        
+#    else:
+#      return self._leaf_match(obj)
+#
+#  def _any_match(self, obj, flag):
+#    if len(self.children) == 0:
+#      if obj.base.is_same_region(self.value.base):
+#        # change this flag
+#        self.flag = flag
+#      else:
+#        # If we are here, it didn't exist, so make a node and set it      
+#        ft = FlagTree(flag, obj)
+#        self.add_child(ft)    
+#    else:
+#      if obj.base.is_same_region(self.value.base):
+#        # change this flag
+#        self.flag = flag
+#      else:
+#        found = False
+#        for child in self.children:
+#          if obj.base.fully_contained(child.value.base):
+#            child._any_match(obj, flag)            
+#            found = True
+#            break
+#        if not found:
+#          # if reached here, then we can't go down another level, so we add ourself here    
+#          ft = FlagTree(flag, obj)
+#          self.add_child(ft)
+#
+#  def any_match[E2](self, obj: View[E2,T,C], flag: F):
+#    """
+#    See if view has a leaf node that exactly matches it. If yes,
+#    set the flag. Otherwise, add in the node in the appropriate location
+#    and set the flag.
+#    """
+#    if not obj.base.fully_contained(self.value.base):
+#      raise ColaError('obj does not have appropriate location in tree')
+#    if len(self.children) == 0:
+#      if obj.base.is_same_region(self.value.base):
+#        # change this flag
+#        self.flag = flag
+#      else:
+#        # If we are here, it didn't exist, so make a node and set it      
+#        ft = FlagTree(flag, obj)
+#        self.add_child(ft)
+#    else:
+#      self._any_match(obj, flag)
+#
+#  def _any_match(self, obj) -> F:
+#    if len(self.children) == 0:
+#      if obj.base.is_same_region(self.value.base):
+#        return self.flag
+#      else:
+#        raise ColaError('obj does not have appropriate location in tree')
+#    else:
+#      if obj.base.is_same_region(self.value.base):
+#        return self.flag
+#      for child in self.children:
+#        if obj.base.fully_contained(child.value.base):
+#          return child._any_match(obj)
+#      raise ColaError('obj does not have appropriate location in tree')
+#
+#  def any_match[E2](self, obj: View[E2,T,C]) -> F:
+#    """
+#    See if view has a leaf node that exactly matches it. If yes,
+#    get the flag. Otherwise, fail.
+#    """
+#    if not obj.base.fully_contained(self.value.base):
+#      raise ColaError('obj does not have appropriate location in tree')
+#    if len(self.children) == 0:
+#      if obj.base.is_same_region(self.value.base):
+#        return self.flag
+#      else:
+#        raise ColaError('obj does not have appropriate location in tree')
+#    else:
+#      return self._any_match(obj)
 
   def _iterate_leaves(self):
     if len(self.children) == 0:
@@ -267,3 +387,4 @@ class FlagTree[E,T,C,F]:
 
   def __str__(self):
     return 'FlagTree\n' + self._inner_str(0)
+

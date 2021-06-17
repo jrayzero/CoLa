@@ -64,6 +64,7 @@ class RBits[N:int]:
       
 class Bits[N: int]:  
   l1_buffer: Ptr[byte]
+  l1_start_capacity: int
   l1_sz: int
   l1_max_cap: int
   l0_buffer: UInt[N]
@@ -75,6 +76,7 @@ class Bits[N: int]:
     self.l0_buffer = UInt[N](0)
     self.l0_sz = 0
     self.l1_buffer = Ptr[byte](l1_start_capacity)
+    self.l1_start_capacity = l1_start_capacity
     self.l1_max_cap = l1_max_capacity
     self.l1_sz = 0
     self.offset = 0
@@ -87,6 +89,9 @@ class Bits[N: int]:
     self.l1_sz = 0
     self.fd = fd
     self.offset = 0
+
+  def clear(self):
+    self.__init__(self.l1_start_capacity, self.l1_max_cap)
 
   def reset_offset(self):
     self.offset = 0
@@ -130,6 +135,10 @@ class Bits[N: int]:
 
   def pack(self, val: byte, nbits):
     self._pack(u8(val), nbits)
+
+  def pack[T:int](self, val: RBits[T]):
+    for v in val.do_iter():
+      self.pack(v,1)
 
   # see if we need to move bits from l0_buffer to l1_buffer
   def _put_if(self, bound: int = N//2):
@@ -243,7 +252,6 @@ class Bits[N: int]:
       local_offset += 1
 
   # only supports up to 64 bits at a time (cause I can't seem to add a generic to __call__)
-  # If you want to drop the data, call unpack after
   def __call__(self, nbits: int) -> UInt[64]:  
     local_offset = 0
     mx = nbits #self.offset + nbits
@@ -354,7 +362,21 @@ class Bits[N: int]:
         return False
     return True
 
-  def __ne__[S:int](self, other: Bits[S]):
+  def __eq__(self, other: str):
+    """
+    other: str of 0s and 1s
+    """
+    if len(self) != len(other):
+      return False
+    for a,b in zip(self.do_iter(), other):
+      if b != '0' and b != '1':
+        raise ColaError()
+      bb = b != '0'
+      if a != bb:
+        return False
+    return True
+
+  def __ne__(self, other):
     return not (self == other)
  
 @extend
