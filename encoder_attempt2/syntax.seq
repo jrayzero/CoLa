@@ -1,0 +1,375 @@
+from cavlc import *
+from golomb import ExpGolomb as gol
+from golomb import MEGolombTables as metables
+from parameter_sets import *
+import math
+
+# TODO Annex B byte stream NAL format??
+
+class Syntax:
+
+  # main entry points
+
+  def check_end_of_nal(stream):
+    last_byte = stream[-8:]
+    if last_byte == 0x00:
+      stream[-8:] = 0x03
+      stream.pack(0x00, 8)          
+
+  def emulation(local_bits, stream):
+    # This emulation method goes through the local buffer and copies one byte at a 
+    # time over to the stream. Whenever it copies a byte, it checks if it added 
+    # a value that requires an emulation byte. If so, it updates it.
+    # first, pack in some bits to get stream byte-aligned
+    bits_needed = len(stream) & 7
+    unpacked = local_bits.unpack(bits_needed)
+    stream.pack(unpacked, bits_needed)
+    # now see if we screwed up the byte stream
+    if len(stream) >= 24:
+      three_bytes = stream[-24:]
+      if three_bytes == 0x000000 or three_bytes == 0x000001 or three_bytes == 0x000002:
+        # yup, need the emulation byte
+        stream[-24:-16] = 0x03
+        # now put back in the original bytes
+        stream[-16:] = three_bytes[:16]
+        stream.pack(three_bytes[16:])
+    # alright, so now we can go through our local bits buffer and add one byte at a time
+    # and backtrack whenever we need to add bits
+    while len(local_bits) >= 8:
+      unpacked = local_bits.unpack(8)
+      stream.pack(unpacked, 8)
+      if len(stream) >= 24:
+        lstream = len(stream)
+        three_bytes = stream[lstream-24:]
+        if three_bytes == 0x000000 or three_bytes == 0x000001 or three_bytes == 0x000002:
+          # yup, need the emulation byte
+          stream[lstream-24:lstream-16] = 0x03
+          stream[lstream-16:] = three_bytes[:16]
+          stream.pack(three_bytes[16:])
+    # add whatever's left. Adding emulation bytes is now the task of the next function
+    stream.pack(local_bits)
+
+
+  def write_nal_unit_header(stream, nal_ref_idc: int, nal_unit_type: int):
+    # annex B
+    stream.pack(0x00, 8) # zero_byte
+    stream.pack(0x000001, 24) # start_code_prefix_one_3bytes
+    # regular part
+    stream.pack(0, 1)
+    stream.pack(nal_ref_idc, 2)
+    stream.pack(nal_unit_type, 5)
+    if nal_unit_type == 14 or nal_unit_type == 20 or nal_unit_type == 21:
+      raise NotImplementedError()
+     
+  def write_sps(sps: SPS, stream):
+    # write directly to stream so we don't check emulation bytes in the header
+    Syntax.write_nal_unit_header(stream, 3, 7)
+    bits = Bits[64]()
+    profile_idc = sps.profile_idc
+    bits.pack(profile_idc, 8)
+    bits.pack(sps.constraint_set0_flag)
+    bits.pack(sps.constraint_set1_flag)
+    bits.pack(sps.constraint_set2_flag)
+    bits.pack(sps.constraint_set3_flag)
+    bits.pack(sps.constraint_set4_flag)
+    bits.pack(sps.constraint_set5_flag)
+    bits.pack(0, 2)
+    bits.pack(sps.level_idc, 8)
+    gol.encode_ue(sps.seq_parameter_set_id, bits)
+    if profile_idc == 100 or profile_idc == 110 or profile_idc == 122 \
+       or profile_idc == 244 or profile_idc == 44 or profile_idc == 83 \
+       or profile_idc == 86 or profile_idc == 118 or profile_idc == 128 \
+       or profile_idc == 138 or profile_idc == 139 or profile_idc == 134 \
+       or profile_idc == 135:
+      gol.encode_ue(sps.chroma_format_idc, bits)
+      if sps.chroma_format_idc == 3:
+        bits.pack(sps.separate_colour_plane_flag)
+      gol.encode_ue(sps.bit_depth_luma_minus8, bits)
+      gol.encode_ue(sps.bit_depth_chroma_minus8, bits)
+      bits.pack(sps.qpprime_y_zero_transform_bypass_flag)
+      bits.pack(sps.seq_scaling_matrix_present_flag)
+      if sps.seq_scaling_matrix_present_flag: 
+        raise NotImplementedError()
+    gol.encode_ue(sps.log2_max_frame_num_minus4, bits)
+    gol.encode_ue(sps.pic_order_cnt_type, bits)
+    if sps.pic_order_cnt_type == 0:   
+      gol.encode_ue(sps.log2_max_pic_order_cnt_lsb_minus4, bits)
+    elif sps.pic_order_cnt_type == 1:
+      bits.pack(sps.delta_pic_order_always_zero_flag)
+      gol.encode_se(sps.offset_for_non_ref_pic, bits)
+      gol.encode_se(sps.offset_for_top_to_bottom_field, bits)
+      gol.encode_ue(sps.num_ref_frames_in_pic_order_cnt_cycle, bits)
+      for i in range(sps.num_ref_frames_in_pic_order_cnt_cycle):
+        gol.encode_se(sps.offset_for_ref_frame[i], bits)
+    gol.encode_ue(sps.max_num_ref_frames, bits)
+    bits.pack(sps.gaps_in_frame_num_value_allowed_flag)
+    gol.encode_ue(sps.pic_width_in_mbs_minus1, bits)
+    gol.encode_ue(sps.pic_height_in_map_units_minus1, bits)
+    bits.pack(sps.frame_mbs_only_flag)
+    if not sps.frame_mbs_only_flag: 
+      bits.pack(sps.mb_adaptive_frame_field_flag)
+    bits.pack(sps.direct_8x8_inference_flag)
+    bits.pack(sps.frame_cropping_flag)
+    if sps.frame_cropping_flag:
+      gol.encode_ue(sps.frame_crop_left_offset, bits)
+      gol.encode_ue(sps.frame_crop_right_offset, bits)
+      gol.encode_ue(sps.frame_crop_top_offset, bits)
+      gol.encode_ue(sps.frame_crop_bottom_offset, bits)
+    bits.pack(sps.vui_parameters_present_flag)
+    if sps.vui_parameters_present_flag:
+      raise NotImplementedError()
+    Syntax.trailing_bits(bits)
+    Syntax.emulation(bits, stream)
+    Syntax.check_end_of_nal(stream)
+
+  def trailing_bits(bits):
+    bits.pack(1,1)
+    rem_bits = 8 - len(bits) % 8
+    for _ in range(rem_bits):      
+      bits.pack(0,1)
+
+  def write_pps(pps: PPS, stream):
+    Syntax.write_nal_unit_header(stream, 3, 8)
+    bits = Bits[64]()
+    gol.encode_ue(pps.pic_parameter_set_id, bits)
+    gol.encode_ue(pps.seq_parameter_set_id, bits)
+    bits.pack(pps.entropy_coding_mode_flag)
+    bits.pack(pps.bottom_field_pic_order_in_frame_present_flag)
+    gol.encode_ue(pps.num_slice_groups_minus1, bits)
+    if pps.num_slice_groups_minus1 > 0:
+      gol.encode_ue(pps.slice_group_map_type, bits)
+      if pps.slice_group_map_type == 0:
+        raise NotImplementedError()
+      elif pps.slice_group_map_type == 2:
+        raise NotImplementedError()
+      elif 3 <= pps.slice_group_map_type <= 5:
+        raise NotImplementedError()
+      elif pps.slice_group_map_type == 6:        
+        raise NotImplementedError()
+    gol.encode_ue(pps.num_ref_idx_l0_default_active_minus1, bits)
+    gol.encode_ue(pps.num_ref_idx_l1_default_active_minus1, bits)
+    bits.pack(pps.weighted_pred_flag)
+    bits.pack(pps.weighted_bipred_idc, 2)
+    gol.encode_se(pps.pic_init_qp_minus26, bits)
+    gol.encode_se(pps.pic_init_qs_minus26, bits)
+    gol.encode_se(pps.chroma_qp_index_offset, bits)
+    bits.pack(pps.deblocking_filter_control_present_flag)
+    bits.pack(pps.constrained_intra_pred_flag)
+    bits.pack(pps.redundant_pic_cnt_present_flag)
+    Syntax.trailing_bits(bits)
+    Syntax.emulation(bits, stream)
+    Syntax.check_end_of_nal(stream)
+
+  def write_slice_header(sh: SliceHeader, sps: SPS, pps: PPS, stream):
+    # NOTE: with the slice data, I'm skipping a lot of flags that I don't want to deal with here
+    # also, I start straying from the function names for the syntax elements in the standard
+    # because I want to be able to write one macroblock at a time
+    nal_unit_type = 5
+    nal_ref_idc = 3
+    Syntax.write_nal_unit_header(stream, nal_ref_idc, nal_unit_type)
+    bits = Bits[64]()
+    gol.encode_ue(sh.first_mb_in_slice, bits)
+    slice_type = sh.slice_type
+    gol.encode_ue(slice_type, bits)
+    gol.encode_ue(sh.pic_parameter_set_id, bits)    
+    if sps.separate_colour_plane_flag:
+      bits.pack(sh.colour_plane_id, 2)
+    nbits = sps.log2_max_frame_num_minus4 + 4
+    bits.pack(sh.frame_num, nbits)
+    if not sps.frame_mbs_only_flag:
+      bits.pack(sh.field_pic_flag)
+      if sh.field_pic_flag:
+        bits.pack(sh.bottom_field_flag)
+    IdrPicFlag = nal_unit_type == 5
+    if IdrPicFlag:
+      gol.encode_ue(sh.idr_pic_id, bits)
+    if sps.pic_order_cnt_type == 0:
+      nbits = sps.log2_max_pic_order_cnt_lsb_minus4+4
+      bits.pack(sh.pic_order_cnt_lsb, nbits)
+      if pps.bottom_field_pic_order_in_frame_present_flag and not sh.field_pic_flag:
+        gol.encode_se(sh.delta_pic_order_cnt_bottom, bits)
+    if sps.pic_order_cnt_type == 1 and not sps.delta_pic_order_always_zero_flag:
+      gol.encode_se(sh.delta_pic_order_cnt[0], bits)
+      if pps.bottom_field_pic_order_in_frame_present_flag and not sh.field_pic_flag:
+        gol.encode_se(sh.delta_pic_order_cnt[1], bits)
+    if pps.redundant_pic_cnt_present_flag:
+      gol.encode_se(sh.redundant_pic_cnt, bits)
+    if slice_type == B:
+      bits.pack(sh.direct_spatial_mv_pred_flag)
+    if slice_type == P or slice_type == SP or slice_type == B:
+      bits.pack(sh.num_ref_idx_active_override_flag)
+      if sh.num_ref_idx_active_override_flag:
+        gol.encode_ue(sh.num_ref_idx_l0_active_minus1, bits)
+        if slice_type == B:
+          gol.encode_ue(sh.num_ref_idx_l1_active_minus1, bits)
+    if nal_unit_type == 20 or nal_unit_type == 21:
+      raise NotImplementedError()
+    else:
+      Syntax.write_ref_pic_list_modification(sh, bits)
+    if (pps.weighted_pred_flag and (slice_type == P or slice_type == SP)) or \
+       (pps.weighted_bipred_idc == 1 and slice_type == B):
+      raise NotImplementedError()
+    if nal_ref_idc != 0:
+      Syntax.write_dec_ref_pic_marking(sh, IdrPicFlag, bits)
+    if pps.entropy_coding_mode_flag and slice_type != I and slice_type != SI:
+      gol.encode_ue(sh.cabac_init_id, bits)
+    gol.encode_se(sh.slice_qp_delta, bits)
+    if slice_type == SP or slice_type == SI:
+      if slice_type == SP:
+        bits.pack(sh.sp_for_switch_flag)
+      gol.encode_se(sh.slice_qs_delta, bits)
+    if pps.deblocking_filter_control_present_flag:
+      gol.encode_ue(sh.disable_deblocking_filter_idc, bits)
+      if sh.disable_deblocking_filter_idc != 1:
+        gol.encode_se(sh.slice_alpha_c0_offset_div2, bits)
+        gol.encode_se(sh.slice_beta_offset_div2, bits)
+    if pps.num_slice_groups_minus1 > 0 and 3 <= pps.slice_group_map_type <= 5:
+      PicWidthInMbs = sps.pic_width_in_mbs_minus1 + 1
+      PicHeightInMapUnits = sps.pic_height_in_map_units_minus1 + 1
+      PicSizeInMapUnits = PicWidthInMbs * PicHeightInMapUnits
+      SliceGroupChangeRate = pps.slice_group_change_rate_minus1 + 1
+      nbits = int(math.ceil(math.log2(PicSizeInMapUnits // SliceGroupChangeRate + 1)))
+      bits.pack(sh.slice_group_change_cycle, nbits)
+    Syntax.emulation(bits, stream)
+
+  def write_ref_pic_list_modification(sh: SliceHeader, bits):
+    slice_type = sh.slice_type
+    if slice_type % 5 != 2 and slice_type % 5 != 4:
+      raise NotImplementedError()
+    if slice_type % 5 == 1:
+      raise NotImplementedError()
+    
+  def write_dec_ref_pic_marking(sh: SliceHeader, IdrPicFlag, bits):
+    if IdrPicFlag:
+      bits.pack(sh.no_output_of_prior_pics_flag)
+      bits.pack(sh.long_term_reference_flag)
+    else:
+      raise NotImplementedError()
+
+  def write_slice_data_preamble(pps: PPS, stream):
+    # just does the byte alignment part for the cabac stuff
+    if pps.entropy_coding_mode_flag:
+      raise NotImplementedError()
+      bits = Bits[64]()
+      bits_needed = 8 - len(stream) & 7
+      for _ in range(bits_needed):
+        bits.pack(1, 0)
+      Syntax.emulation(bits, stream)
+
+  def write_one_macroblock(macroblock: Macroblock,
+                           sh: SliceHeader, pps: PPS, sps: SPS, stream):
+    bits = Bits[64]()
+    print(sh.slice_type)
+    if pps.entropy_coding_mode_flag:
+      raise NotImplementedError()    
+    if sh.slice_type != I and sh.slice_type != SI and sh.slice_type != I_ALL and sh.slice_type != SI_ALL:
+      raise NotImplementedError()
+      if not pps.entropy_coding_mode_flag:
+        gol.encode_ue(macroblock.mb_skip_run, bits)
+      else:
+        raise NotImplementedError()
+    gol.encode_ue(macroblock.mb_type, bits)
+    if macroblock.mb_type == I_PCM:
+      raise NotImplementedError()
+    else:
+      if macroblock.interpredicted:
+        raise NotImplementedError()
+      else:
+        if pps.transform_8x8_mode_flag and macroblock.mb_type == I_NxN:
+          bits.pack(True)
+      if 0 <= macroblock.mb_type < 25:
+        if macroblock.mb_type == 0:
+          # 4x4 or 8x8. same list used for both here
+          A_mode = macroblock.A_mode
+          B_mode = macroblock.B_mode
+          most_probable = 2
+          if A_mode and B_mode:
+            if ~A_mode < ~B_mode:
+              most_probable = ~A_mode
+            else:
+              most_probable = ~B_mode
+          for prob,mode in zip(macroblock.intra_modes_most_probable, macroblock.intra_modes):
+            bits.pack(prob)
+            if not prob:
+              bits.pack(mode, 3)
+        else:
+          # 16x16
+          raise NotImplementedError()
+        ChromaArrayType = sps.chroma_format_idc if not sps.separate_colour_plane_flag else 0
+        if ChromaArrayType == 1 or ChromaArrayType == 2:
+          gol.encode_ue(macroblock.intra_chroma_pred_mode, bits)
+      else:
+        raise NotImplementedError()
+      if macroblock.mb_type == 0:
+        ChromaArrayType = sps.chroma_format_idc if not sps.separate_colour_plane_flag else 0        
+        # FOr coded block pattern, see pg 121 in richardson
+        if ChromaArrayType == 1 or ChromaArrayType == 2:          
+          gol.encode_me(macroblock.coded_block_pattern, bits, metables.encode_table_cat_1_2_intra())
+        else:
+          gol.encode_me(macroblock.coded_block_pattern, bits, metables.encode_table_cat_0_3_intra())
+        
+      CodedBlockPatternLuma = macroblock.coded_block_pattern % 16
+      CodedBlockPatternChroma = macroblock.coded_block_pattern / 16
+      # TODO bunch of conditions here for transform_size_8x8
+      if CodedBlockPatternLuma > 0 or CodedBlockPatternChroma > 0 or 1 <= macroblock.mb_type < 25:
+        gol.encode_se(macroblock.mb_qp_delta, bits)
+        
+    Syntax.emulation(bits, stream)
+
+@test
+def do_test():
+  local_bits = Bits[32]()
+  local_bits.pack(0x00000205000001AF, 64)
+  assert local_bits == 0x00000205000001AF
+  tmpstream = Bits[32]()
+  Syntax.emulation(local_bits, tmpstream)
+  ref_tmpstream = Bits[64]()
+  # need to break this up because codon can't handle hex vals > 64 bits)
+  ref_tmpstream.pack(0x0300000205030000, 64)
+  ref_tmpstream.pack(0x01AF, 16)
+  assert tmpstream == ref_tmpstream
+
+  fd = open('/tmp/bits.h264', 'wb')
+  stream = Bits[64]()
+  sps = SPS()
+  sps.profile_idc = 66
+  sps.level_idc = 20
+  sps.seq_parameter_set_id = 0
+  sps.pic_width_in_mbs_minus1 = 10 # QCIF
+  sps.pic_height_in_map_units_minus1 = 8
+  Syntax.write_sps(sps, stream)
+
+  pps = PPS()
+  pps.pic_parameter_set_id = 0
+  pps.seq_parameter_set_id = 0
+  pps.num_ref_idx_l0_default_active_minus1 = 4
+  pps.num_ref_idx_l1_default_active_minus1 = 4
+  Syntax.write_pps(pps, stream)
+
+  sh = SliceHeader()
+  sh.first_mb_in_slice = 0
+  sh.slice_type = I_ALL
+  sh.pic_parameter_set_id = 0
+  sh.frame_num = 0
+  sh.idr_pic_id = 0
+  Syntax.write_slice_header(sh, sps, pps, stream)
+  Syntax.write_slice_data_preamble(pps, stream)
+
+  # would then write all your macrolblocks in the slice 
+  mb = Macroblock()
+  mb.mb_type = I_NxN
+  mb.intra_modes_most_probable = [True, False, True, False, False, False, True, True, False, False, False, False, False, True, False, False]
+  mb.intra_modes = [2, 1, 1, 6, 1, 7, 7, 7, 0, 0, 0, 7, 5, 5, 7, 7]
+  mb.coded_block_pattern = 47
+  mb.mb_qp_delta = 0
+  mb.A_mode = None
+  mb.B_mode = None
+  Syntax.write_one_macroblock(mb, sh, pps, sps, stream)  
+  Syntax.check_end_of_stream(stream)
+
+  stream.flush_to_file(fd, True, True)
+  fd.flush()
+  fd.close()
+
+do_test()
+  
