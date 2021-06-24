@@ -8,10 +8,6 @@ def read_frame(Y_frame, Cb_frame, Cr_frame, fd, cfg):
   else:
     raise ColaError()
 
-class MblkInfo:
-
-  slice_id: int
-
 def mode_16x16_to_str(mode):
   if mode == UNKNOWN_MODE:
     return 'UNKNOWN_MODE'
@@ -45,3 +41,12 @@ def clip3(x, y, z):
 
 def clip1y(x, bit_depth_Y):
   return clip3(0, (1<<bit_depth_Y)-1, x)
+
+class MblkInfo:
+
+  slice_id: int
+
+  def __str__(self):
+    s = ''
+    s += 'slice_id: ' + str(self.slice_id)
+    return s

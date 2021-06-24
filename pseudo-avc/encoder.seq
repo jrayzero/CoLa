@@ -31,29 +31,28 @@ Cr_frame = Block.make[byte](cframe_h, cframe_w)
 
 # main loop
 for f in range(cfg.nframes):
-  if cfg.color_space == YUV:    
+  if cfg.color_space == YUV:
     read_frame(Y_frame, Cb_frame, Cr_frame, ifd, cfg)
   # Initial partition of the frames into macroblocks
   Y_mbs = Partition.grid(Y_frame, 16)
-  Cb_mbs = Partition.grid(U_frame, 8)
-  Cr_mbs = Partition.grid(U_frame, 8)
-  mblk_info = Y_mbs.to_flagtree(MblkInfo())
-  print(mblk_info)
-#  cur_slice_id = 0
-#  mbs_in_slice = 0
-#  for Y_mb,Cb_mb,Cr_mb in scan(Y_mbs, Cb_mbs, Cr_mbs):
-#    mblk_info[Y_mb].slice_id = cur_slice_id
-#    # Intra prediction
+  Cb_mbs = Partition.grid(Cb_frame, 8)
+  Cr_mbs = Partition.grid(Cr_frame, 8)
+  # don't pass in MblkInfo() because it will set all of the nodes to the same mblk, so then they are all just pointers to one another
+  mblk_info = Y_mbs.to_flagtree[MblkInfo]()
+  cur_slice_id = 0
+  mbs_in_slice = 0
+  for Y_mb,Cb_mb,Cr_mb in scan(Y_mbs, Cb_mbs, Cr_mbs):
+    mblk_info[Y_mb].slice_id = cur_slice_id
+   # Intra prediction
 #    cost_16x16 = IntraPred.try_16x16(Y_mb, Cb_mb, Cr_mb, Y_mb, Cb_mb, Cr_mb, mblk_info, config)
-##    cost_4x4 = IntraPred.try_4x4(Y_mb, Cb_mb, Cr_mb, Y_mb, Cb_mb, Cr_mb, mblk_info)
-##    Pred.resolve_pred_options(cost_16x16, cost_4x4)
-#    # update slice status
-#    mbs_in_slice += 1
-#    if cfg.macroblocks_per_slice == mbs_in_slice:
-#      mbs_in_slice = 0
-#      cur_slice_id += 1
-#
+#    cost_4x4 = IntraPred.try_4x4(Y_mb, Cb_mb, Cr_mb, Y_mb, Cb_mb, Cr_mb, mblk_info)
+#    Pred.resolve_pred_options(cost_16x16, cost_4x4)
+   # update slice status
+    mbs_in_slice += 1
+    if cfg.macroblocks_per_slice == mbs_in_slice:
+      mbs_in_slice = 0
+      cur_slice_id += 1
+  print(mblk_info)
 ifd.close()
 ofd.flush()
 ofd.close()
-

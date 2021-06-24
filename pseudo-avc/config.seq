@@ -47,7 +47,7 @@ class Config:
     self.macroblocks_per_slice = 10
     self.bit_depth = 8
     self.trace = False
-    
+
     fd = open(cfg_file, 'r')
     params = {}
     for line in fd:
@@ -74,7 +74,7 @@ class Config:
     if 'nframes' in params:
       self.nframes = int(params['nframes'])
     else:
-      raise ColaError()    
+      raise ColaError()
     if 'input_sample' in params:
       val = params['input_sample'].lower()
       if val == 'sample_420':
@@ -83,7 +83,7 @@ class Config:
         raise ColaError()
     if 'frame_width_in_pixels' in params:
       val = params['frame_width_in_pixels'].lower()
-      if val == 'qcif':        
+      if val == 'qcif':
         self.lframe_width_in_pixels = 176
         if self.input_sample == SAMPLE_420:
           self.cframe_width_in_pixels = 88
@@ -93,7 +93,7 @@ class Config:
       raise ColaError()
     if 'frame_height_in_pixels' in params:
       val = params['frame_height_in_pixels'].lower()
-      if val == 'qcif':        
+      if val == 'qcif':
         self.lframe_height_in_pixels = 144
         if self.input_sample == SAMPLE_420:
           self.cframe_height_in_pixels = 72

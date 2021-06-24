@@ -98,8 +98,14 @@ class AndPTree[E,T,C]:
     ft = FlagTree[E,T,C,F](default_value, self.value)
     for child in self.children:
       ft.add_child(child.to_flagtree(default_value))
-    return ft    
-    
+    return ft
+
+  def to_flagtree[F](self) -> FlagTree[E,T,C,F]:
+    ft = FlagTree[E, T, C, F](self.value)
+    for child in self.children:
+      ft.add_child(child.to_flagtree())
+    return ft
+
 @dataclass(init=False)
 class PTree[E,T,C]:
 

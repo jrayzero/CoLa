@@ -1,7 +1,8 @@
 from block import Block,View
 from error import ColaError
 
-# TODO make an separate set of functions that don't fail 
+# TODO make an separate set of functions that don't fail
+# TODO get rid of need for views and just add custom mapping functions . This way, don't need to map it specific value
 
 # NOTE: you can shoot yourself in the foot with a flagtree if you make it all manually. I recommend
 # building it in line with an AndPTree
@@ -33,12 +34,12 @@ class FlagTree[E,T,C,F]:
   children: list[FlagTree[E,T,C,F]]
   flag: F # all nodes get this, even if they aren't leaves
 
-  def __init__(self, flag: F, value: View[E,T,C]):
+  def __init__(self, flag: F, value: View[E,T,C], make_copy=False):
     self.value = value
     self.flag = flag
     self.children = []
 
-  def __init__(self, flag: F, value: Block[E,T,C]):
+  def __init__(self, flag: F, value: Block[E,T,C], make_copy=False):
     self.value = View(value)
     self.flag = flag
     self.children = []
