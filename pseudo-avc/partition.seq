@@ -25,3 +25,4 @@ class Partition:
 
   def grid(root, sz: int):
     return PTree(True, root, [PTree(True, r, [PTree(c) for c in Partition.col_split(r,sz)]) for r in Partition.row_split(root,sz)])[0]
+    

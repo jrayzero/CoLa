@@ -2,8 +2,6 @@ from ..cola.frontend.block import *
 from ..cola.frontend.scan import scan
 from transforms import Hadamard
 
-# LIBRARY
-
 # https://www.intechopen.com/books/multimedia/bit-rate-estimation-for-cost-function-of-h-264-avc
 # https://link.springer.com/content/pdf/10.1007/s11760-011-0267-z.pdf
 
@@ -35,17 +33,3 @@ class Cost:
     for h in scan(output):
       cost += abs(h())
     return cost   
-  
-  def lambda_Sullivan_Wiegand(QP: int):
-    return 0.852 ** ((QP-12)//3)
-
-#  def rate_distortion_ssd(actual, estimate, lambda_val: int, R: int) -> int:
-#    return Cost.ssd(actual, estimate) + lambda_val * R
-
-#  # P = 0 for most probable mode
-#  def rate_distortion_sad(actual, estimate, lambda_val: int, P: bool) -> int:
-#    return Cost.sad(actual, estimate) + lambda_val * int(P)
-
-#  # P = 0 for most probable mode
-#  def rate_distortion_satd(actual, estimate, lambda_val: int, P: bool) -> int:
-#    return Cost.satd(actual, estimate) + lambda_val * int(P)

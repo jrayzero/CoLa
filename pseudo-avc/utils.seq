@@ -1,0 +1,47 @@
+from ..cola.frontend.error import *
+from constants import *
+from basic_io import *
+
+def read_frame(Y_frame, Cb_frame, Cr_frame, fd, cfg):
+  if cfg.color_space == YUV:
+    IOYUV.read_frame_planar(Y_frame, Cb_frame, Cr_frame, fd, cfg.bit_depth)
+  else:
+    raise ColaError()
+
+class MblkInfo:
+
+  slice_id: int
+
+def mode_16x16_to_str(mode):
+  if mode == UNKNOWN_MODE:
+    return 'UNKNOWN_MODE'
+  elif mode == VERT_16x16:
+    return 'VERT_16x16'
+  elif mode == HORIZ_16x16:
+    return 'HORIZ_16x16'
+  elif mode == DCA_16x16:
+    return 'DCA_16x16'
+  elif mode == DCB_16x16:
+    return 'DCB_16x16'
+  elif mode == DCC_16x16:
+    return 'DCC_16x16'
+  elif mode == DCD_16x16:
+    return 'DCD_16x16'
+  elif mode == PLANAR_16x16:
+    return 'PLANAR_16x16'
+  else:
+    return ''
+
+def note(msg):
+  print('NOTE: ' + str(msg))
+
+def clip3(x, y, z):
+  if z < x:
+    return x
+  elif z > y:
+    return y
+  else:
+    return z
+
+def clip1y(x, bit_depth_Y):
+  return clip3(0, (1<<bit_depth_Y)-1, x)

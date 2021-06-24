@@ -1,0 +1,123 @@
+from ..cola.frontend.error import *
+from constants import *
+
+# if the values are positive, then they represent actual pixel values
+#def compute_luma_frame_dims(frame_width_in_pixels, frame_height_in_pixels):
+#  w,h = 0,0
+#  if frame_width_in_pixels == QCIF:
+#    w = 176
+#  else:
+#    raise ColaError()
+#  if frame_height_in_pixels == QCIF:
+#    h = 144
+#  else:
+#    raise ColaError()
+#  return w,h
+
+# pass in computed luma dims
+#def compute_chroma_frame_dims(realized_frame_width, realized_frame_height, sample):
+#  if sample == SAMPLE_420:
+#    return realized_frame_width//2, realized_frame_height//2
+#  else:
+#    raise ColaError()
+
+@dataclass(init=False)
+class Config:
+
+  input_file: str
+  output_file: str
+  nframes: int
+  lframe_width_in_pixels: int
+  lframe_height_in_pixels: int
+  cframe_width_in_pixels: int
+  cframe_height_in_pixels: int
+  input_sample: int
+  color_space: int
+  macroblocks_per_slice: int
+  bit_depth: int
+  trace: bool
+
+  def __init__(self, cfg_file):
+    self.nframes = -1
+    self.lframe_width_in_pixels = -2
+    self.lframe_width_in_pixels = -2
+    self.cframe_height_in_pixels = -2
+    self.cframe_height_in_pixels = -2
+    self.input_sample = SAMPLE_420
+    self.macroblocks_per_slice = 10
+    self.bit_depth = 8
+    self.trace = False
+    
+    fd = open(cfg_file, 'r')
+    params = {}
+    for line in fd:
+      line = line.strip()
+      if line[0] == '#':
+        continue
+      sline = line.split('=')
+      if len(sline) == 2:
+        params[sline[0].lower().strip()] = sline[1].strip()
+    fd.close()
+
+    if 'input_file' in params:
+      self.input_file = params['input_file']
+      if self.input_file[0] == '\'' and self.input_file[-1] == '\'':
+        self.input_file = self.input_file[1:-1]
+    else:
+      raise ColaError()
+    if 'output_file' in params:
+      self.output_file = params['output_file']
+      if self.output_file[0] == '\'' and self.output_file[-1] == '\'':
+        self.output_file = self.output_file[1:-1]
+    else:
+      raise ColaError()
+    if 'nframes' in params:
+      self.nframes = int(params['nframes'])
+    else:
+      raise ColaError()    
+    if 'input_sample' in params:
+      val = params['input_sample'].lower()
+      if val == 'sample_420':
+        self.input_sample = SAMPLE_420
+      else:
+        raise ColaError()
+    if 'frame_width_in_pixels' in params:
+      val = params['frame_width_in_pixels'].lower()
+      if val == 'qcif':        
+        self.lframe_width_in_pixels = 176
+        if self.input_sample == SAMPLE_420:
+          self.cframe_width_in_pixels = 88
+      else:
+        raise ColaError()
+    else:
+      raise ColaError()
+    if 'frame_height_in_pixels' in params:
+      val = params['frame_height_in_pixels'].lower()
+      if val == 'qcif':        
+        self.lframe_height_in_pixels = 144
+        if self.input_sample == SAMPLE_420:
+          self.cframe_height_in_pixels = 72
+      else:
+        raise ColaError()
+    else:
+      raise ColaError()
+    if 'macroblocks_per_slice' in params:
+      self.macroblocks_per_slice = int(params['macroblocks_per_slice'])
+    if 'trace' in params:
+      self.trace = params['trace'] == 'true'
+
+  def __str__(self):
+    s = ''
+    s += 'input_file ' + str(self.input_file) + '\n'
+    s += 'output_file ' + str(self.output_file) + '\n'
+    s += 'nframes ' + str(self.nframes) + '\n'
+    s += 'lframe_width_in_pixels ' + str(self.lframe_width_in_pixels) + '\n'
+    s += 'lframe_height_in_pixels ' + str(self.lframe_height_in_pixels) + '\n'
+    s += 'cframe_width_in_pixels ' + str(self.cframe_width_in_pixels) + '\n'
+    s += 'cframe_height_in_pixels ' + str(self.cframe_height_in_pixels) + '\n'
+    s += 'input_sample ' + str(self.input_sample) + '\n'
+    s += 'color_space ' + str(self.color_space) + '\n'
+    s += 'macroblocks_per_slice ' + str(self.macroblocks_per_slice) + '\n'
+    s += 'bit_depth ' + str(self.bit_depth) + '\n'
+    s += 'trace ' + str(self.trace) + '\n'
+    return s

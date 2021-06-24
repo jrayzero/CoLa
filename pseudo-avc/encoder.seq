@@ -1,0 +1,59 @@
+from ..cola.frontend.block import *
+from ..cola.frontend.error import *
+from ..cola.frontend.scan import *
+from ..cola.frontend.flagtree import *
+
+from basic_io import *
+from constants import *
+from partition import *
+from intra import *
+from config import *
+
+import sys
+
+if len(sys.argv) < 2:
+  raise ColaError()
+
+config_file = sys.argv[1]
+cfg = Config(config_file)
+print(cfg)
+
+ifd = open(cfg.input_file, 'rb')
+ofd = open(cfg.output_file, 'wb')
+
+lframe_w,lframe_h = cfg.lframe_width_in_pixels, cfg.lframe_height_in_pixels
+cframe_w,cframe_h = cfg.cframe_width_in_pixels, cfg.cframe_height_in_pixels
+
+# holds the raw pixels, and is incrementally overwritten with the reconstructed values
+Y_frame = Block.make[byte](lframe_h, lframe_w)
+Cb_frame = Block.make[byte](cframe_h, cframe_w)
+Cr_frame = Block.make[byte](cframe_h, cframe_w)
+
+# main loop
+for f in range(cfg.nframes):
+  if cfg.color_space == YUV:    
+    read_frame(Y_frame, Cb_frame, Cr_frame, ifd, cfg)
+  # Initial partition of the frames into macroblocks
+  Y_mbs = Partition.grid(Y_frame, 16)
+  Cb_mbs = Partition.grid(U_frame, 8)
+  Cr_mbs = Partition.grid(U_frame, 8)
+  mblk_info = Y_mbs.to_flagtree(MblkInfo())
+  print(mblk_info)
+#  cur_slice_id = 0
+#  mbs_in_slice = 0
+#  for Y_mb,Cb_mb,Cr_mb in scan(Y_mbs, Cb_mbs, Cr_mbs):
+#    mblk_info[Y_mb].slice_id = cur_slice_id
+#    # Intra prediction
+#    cost_16x16 = IntraPred.try_16x16(Y_mb, Cb_mb, Cr_mb, Y_mb, Cb_mb, Cr_mb, mblk_info, config)
+##    cost_4x4 = IntraPred.try_4x4(Y_mb, Cb_mb, Cr_mb, Y_mb, Cb_mb, Cr_mb, mblk_info)
+##    Pred.resolve_pred_options(cost_16x16, cost_4x4)
+#    # update slice status
+#    mbs_in_slice += 1
+#    if cfg.macroblocks_per_slice == mbs_in_slice:
+#      mbs_in_slice = 0
+#      cur_slice_id += 1
+#
+ifd.close()
+ofd.flush()
+ofd.close()
+

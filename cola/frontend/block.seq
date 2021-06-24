@@ -252,7 +252,7 @@ class Multidim[E,T,C]:
     if self._cgrid != other._cgrid:
       raise ColaError('cgrids don\'t match')
     return Multidim._do_fully_contained[C](self._cgrid_mapping, other._cgrid_mapping)
-
+    
   def _do_is_same_region[C](self_mapping: C, other_mapping: C) -> bool:
     if staticlen(self_mapping) == 0:
       return True
@@ -1068,6 +1068,12 @@ class View[E,T,C]:
   
   def exists(self) -> bool:
     return self.base.fully_contained(self.base._buffer_owner)
+
+  def exists[E2](self, relative_to: Block[E2,T,C]) -> bool:
+    return self.base.fully_contained(relative_to.base)
+
+  def exists[E2](self, relative_to: View[E2,T,C]) -> bool:
+    return self.base.fully_contained(relative_to.base)
   
   def set_density(self, *dims) -> Block[E,T,C]:
     return Block(self.base.set_density(*dims))
