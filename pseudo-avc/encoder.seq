@@ -8,6 +8,7 @@ from constants import *
 from partition import *
 from intra import *
 from config import *
+from structures import *
 
 import sys
 
@@ -16,7 +17,6 @@ if len(sys.argv) < 2:
 
 config_file = sys.argv[1]
 cfg = Config(config_file)
-print(cfg)
 
 ifd = open(cfg.input_file, 'rb')
 ofd = open(cfg.output_file, 'wb')
@@ -38,7 +38,8 @@ for f in range(cfg.nframes):
   Cb_mbs = Partition.grid(Cb_frame, 8)
   Cr_mbs = Partition.grid(Cr_frame, 8)
   # don't pass in MblkInfo() because it will set all of the nodes to the same mblk, so then they are all just pointers to one another
-  mblk_info = Y_mbs.to_flagtree[MblkInfo]()
+  # TODO yikes this notaton
+  mblk_info = Y_mbs.to_flagtree[MblkInfo[Tuple[ColaSlice,ColaSlice]]]()
   cur_slice_id = 0
   mbs_in_slice = 0
   for Y_mb,Cb_mb,Cr_mb in scan(Y_mbs, Cb_mbs, Cr_mbs):
@@ -46,13 +47,21 @@ for f in range(cfg.nframes):
     # Intra prediction
     cost_16x16,pred_16x16,mode_16x16 = IntraPred.try_16x16(Y_mb, Cb_mb, Cr_mb, Y_mb, Cb_mb, Cr_mb, mblk_info, cfg)
     # returns the full cost + individual preds and modes
-    cost_4x4,preds_4x4,modes_4x4 = IntraPred.try_4x4(Y_mb, Cb_mb, Cr_mb, Y_mb, Cb_mb, Cr_mb, mblk_info, cfg)
-    # #    Pred.resolve_pred_options(cost_16x16, cost_4x4)
-    # # update slice status
-    # mbs_in_slice += 1
-    # if cfg.macroblocks_per_slice != -1 and cfg.macroblocks_per_slice == mbs_in_slice:
-    #   mbs_in_slice = 0
-    #   cur_slice_id += 1
+    cost_4x4,pred_4x4,mode_tree_4x4 = IntraPred.try_4x4(Y_mb, Cb_mb, Cr_mb, Y_mb, Cb_mb, Cr_mb, mblk_info, cfg)
+    mblk_info[Y_mb].is_intra_pred = True
+    if cost_16x16 < cost_4x4:
+      mblk_info[Y_mb].intra_pred_type = INTRA_16x16
+      # TODO do rest of pipeline + recons
+    else:
+      mblk_info[Y_mb].intra_pred_type = INTRA_4x4
+      mblk_info[Y_mb].smblk_info = mode_tree_4x4
+      # TODO do rest of pipeline + recons
+    # update slice status
+    mbs_in_slice += 1
+    if cfg.macroblocks_per_slice != -1 and cfg.macroblocks_per_slice == mbs_in_slice:
+      mbs_in_slice = 0
+      cur_slice_id += 1
+  print(mblk_info)
 ifd.close()
 ofd.flush()
 ofd.close()
