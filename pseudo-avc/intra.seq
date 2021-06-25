@@ -118,7 +118,7 @@ class IntraPred:
         best_pred = pred
         best_mode = DCD_16x16
     if cfg.trace:
-      note('Y_MB @ ' + str(Y_mb.origin()) + ' has cost ' + str(best_cost) + ' for mode ' + mode_to_str(best_mode))
+      note('Y_MB: ' + str(Y_mb.dims()) + ' @ ' + str(Y_mb.origin()) + ' has cost ' + str(best_cost) + ' for mode ' + mode_to_str(best_mode))
     return best_cost,best_pred,best_mode
 
   def vertical_16x16(pred, ref_colocated):
@@ -168,14 +168,6 @@ class IntraPred:
         pred[y,x] = (clip1y(clip_val, bit_depth))
 
   def try_4x4(Y_mb, Cb_mb, Cr_mb, Y_recons, Cb_recons, Cr_recons, mblk_info, cfg):
-    left,up,up_left,up_right = IntraPred.left_available(Y_mb, mblk_info),\
-                               IntraPred.up_available(Y_mb, mblk_info),\
-                               IntraPred.up_left_available(Y_mb, mblk_info),\
-                               IntraPred.up_right_available(Y_mb, mblk_info)
-
-    if cfg.trace:
-      note('Y_MB: ' + str(Y_mb.dims()) + ' @ ' + str(Y_mb.origin()) + ' has left,up,up_left: ' + str(left) + ',' + str(
-        up) + ',' + str(up_left))
     # Compute luma first
     # store best mode for each of the 16 4x4 blocks
     best_costs = [MAX_INT] * 16
@@ -184,6 +176,14 @@ class IntraPred:
     Y_4x4 = Partition.grid(Y_mb, 4)
     idx = 0
     for y_4x4 in scan(Y_4x4):
+      left, up, up_left, up_right = IntraPred.left_available(y_4x4, mblk_info), \
+                                    IntraPred.up_available(y_4x4, mblk_info), \
+                                    IntraPred.up_left_available(y_4x4, mblk_info), \
+                                    IntraPred.up_right_available(y_4x4, mblk_info)
+      if cfg.trace:
+        note(
+          'y_4x4: ' + str(y_4x4.dims()) + ' @ ' + str(y_4x4.origin()) + ' has left,up,up_left,up_right: ' + str(left) + ',' + str(
+            up) + ',' + str(up_left) + ',' + str(up_right))
       if left:
         pred = y_4x4.shallow_cast[int]()
         IntraPred.horizontal_4x4(pred, Y_recons[y_4x4])
@@ -271,7 +271,6 @@ class IntraPred:
           best_modes[idx] = DCC_4x4
       else:
         pred = y_4x4.shallow_cast[int]()
-        print('running DC d')
         IntraPred.DC_d_4x4(pred, cfg.bit_depth)
         cost = Cost.sad(y_4x4, pred)
         if cost < best_costs[idx]:
@@ -280,7 +279,7 @@ class IntraPred:
           best_modes[idx] = DCD_4x4
       if cfg.trace:
         note(
-          'Y_MB @ ' + str(y_4x4.origin()) + ' has cost ' + str(best_costs[idx]) + ' for mode ' + mode_to_str(best_modes[idx]))
+          'y_4x4: ' + str(y_4x4.dims()) + ' @ ' + str(y_4x4.origin()) + ' has cost ' + str(best_costs[idx]) + ' for mode ' + mode_to_str(best_modes[idx]))
       idx += 1
     # compute the total cost
     total_cost = 0
@@ -347,7 +346,7 @@ class IntraPred:
         elif zVR % 2 == 0:
           pred[y,x] = (int(ref_colocated(-1,x-(y>>1)-1)) + int(ref_colocated(-1, x-(y>>1))) + 1) >> 1
         else:
-          pred[y,x] = (int(ref_colocated(-1,x-(y>>1)-2,-1)) + 2*int(ref_colocated(-1,x-(y>>1)-1)) + int(ref_colocated(-1,x-(y>>1)))) >> 2
+          pred[y,x] = (int(ref_colocated(-1,x-(y>>1)-2)) + 2*int(ref_colocated(-1,x-(y>>1)-1)) + int(ref_colocated(-1,x-(y>>1)))) >> 2
 
   def horizontal_down_4x4(pred, ref_colocated):
     for y in range(4):

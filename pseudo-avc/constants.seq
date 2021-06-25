@@ -60,5 +60,13 @@ def mode_to_str(mode):
     return 'DIAG_DOWN_LEFT_4x4'
   elif mode == DIAG_DOWN_RIGHT_4x4:
     return 'DIAG_DOWN_RIGHT_4x4'
+  elif mode == VERT_RIGHT_4x4:
+    return 'VERT_RIGHT_4x4'
+  elif mode == VERT_LEFT_4x4:
+    return 'VERT_LEFT_4x4'
+  elif mode == HORIZ_UP_4x4:
+    return 'HORIZ_UP_4x4'
+  elif mode == HORIZ_DOWN_4x4:
+    return 'HORIZ_DOWN_4x4'
   else:
     return ''
