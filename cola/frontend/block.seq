@@ -14,7 +14,7 @@ def valid_N[N:int]():
 
 # N = num. dimensions
 # T = Tuple of N ints
-class CoordGrid[T]:
+class CoordGrid:
   """
   Represents the backing area that Blocks and Views are defined relative to.
   Blocks and Views with the same CoordGrid are part of the same spatial hierarchy.
@@ -24,10 +24,10 @@ class CoordGrid[T]:
   def __init__(self):
     self.unique_id = ''.join(random.choices(string.printable, k=5))
 
-  def __eq__(self, other: CoordGrid[T]) -> bool:
+  def __eq__(self, other: CoordGrid) -> bool:
     return self.unique_id == other.unique_id
   
-  def __ne__(self, other: CoordGrid[T]) -> bool:
+  def __ne__(self, other: CoordGrid) -> bool:
     return not (self == other)
 
 # E = element type
@@ -47,7 +47,7 @@ class Multidim[E,T,C]:
   ## The owning Multidim of the buffer
   _buffer_owner: Multidim[E,T,C]
   ## The backing CoordGrid
-  _cgrid: CoordGrid[T]
+  _cgrid: CoordGrid
   ## This mapping to _cgrid
   _cgrid_mapping: C
   ## Whether this Multidim owns _buffer
@@ -69,7 +69,7 @@ class Multidim[E,T,C]:
     self._nunits = mul_reduce(self._dims)
     self._buffer_owner = self
     self._buffer = Array[E](self.nunits())
-    self._cgrid = CoordGrid[T]()
+    self._cgrid = CoordGrid()
     self._is_owner = True
     self._is_root = True
     self._stored_relatives = {}
@@ -89,7 +89,7 @@ class Multidim[E,T,C]:
     self._buffer = Array[E](self.nunits())
     for n in range(self._nunits):
       self._buffer[n] = elems[n]
-    self._cgrid = CoordGrid[T]()
+    self._cgrid = CoordGrid()
     self._is_owner = True
     self._is_root = True
     self._stored_relatives = {}
@@ -103,7 +103,7 @@ class Multidim[E,T,C]:
     self._nunits = mul_reduce(self._dims)
     self._buffer_owner = self
     self._buffer = Array[E](self.nunits())
-    self._cgrid = CoordGrid[T]()
+    self._cgrid = CoordGrid()
     self._is_owner = True
     self._is_root = True
     self._stored_relatives = {}
@@ -252,6 +252,9 @@ class Multidim[E,T,C]:
     if self._cgrid != other._cgrid:
       raise ColaError('cgrids don\'t match')
     return Multidim._do_fully_contained[C](self._cgrid_mapping, other._cgrid_mapping)
+
+  def fully_contained(self, other_mapping: C) -> bool:
+    return Multidim._do_fully_contained(self._cgrid_mapping, other_mapping)
     
   def _do_is_same_region[C](self_mapping: C, other_mapping: C) -> bool:
     if staticlen(self_mapping) == 0:
@@ -274,7 +277,7 @@ class Multidim[E,T,C]:
       return False
     return Multidim._do_is_same_region[C](self._cgrid_mapping, other._cgrid_mapping)
 
-  def _do_fully_contained[C](self_mapping: C, other: CoordGrid[T]) -> bool:
+  def _do_fully_contained[C](self_mapping: C, other: CoordGrid) -> bool:
     if staticlen(self_mapping) == 0:
       return True
     else:
@@ -282,7 +285,7 @@ class Multidim[E,T,C]:
       stops_oob = self_mapping[0].stop > other._dims[0]
       return not (starts_oob or stops_oob) and Multidim._do_fully_contained(self_mapping[1:], other[1:])
 
-  def fully_contained(self, other: CoordGrid[T]) -> bool:
+  def fully_contained(self, other: CoordGrid) -> bool:
     """
     Check if self is fully contained within the specified cgrid.
     wrt their CoordGrids (which should be the same). self is fully contained
@@ -578,11 +581,14 @@ class Multidim[E,T,C]:
     if staticlen(idxs) == 1:
       if staticlen(self._dims) != 1:
         # this is a linear idx
-        if idxs[0] < 0:
-          raise ColaError()
-        idxs2 = self._delinearize(idxs[0])
-        canon = Multidim._do_canonicalize(idxs2, self._dims)
-        return Multidim(self, Multidim._do_combined(self._cgrid_mapping, canon))
+        if isinstance(idxs[0], int):
+          if idxs[0] < 0:
+            raise ColaError()
+          idxs2 = self._delinearize(idxs[0])
+          canon = Multidim._do_canonicalize(idxs2, self._dims)
+          return Multidim(self, Multidim._do_combined(self._cgrid_mapping, canon))
+        else:
+          raise NotImplementedError()
       else:
         canon = Multidim._do_canonicalize(idxs, self._dims)
         return Multidim(self, Multidim._do_combined(self._cgrid_mapping, canon))

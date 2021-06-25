@@ -91,17 +91,17 @@ class AndPTree[E,T,C]:
           return False
     return True
 
-  def to_flagtree[F](self, default_value: F) -> FlagTree[E,T,C,F]:
+  def to_flagtree[F](self, default_value: F) -> FlagTree[C,F]:
     """
     Create an associated flag tree containing flags of type F.
     """
-    ft = FlagTree[E,T,C,F](default_value, self.value)
+    ft = FlagTree[C,F](default_value, self.value)
     for child in self.children:
       ft.add_child(child.to_flagtree(default_value))
     return ft
 
-  def to_flagtree[F](self) -> FlagTree[E,T,C,F]:
-    ft = FlagTree[E, T, C, F](self.value)
+  def to_flagtree[F](self) -> FlagTree[C,F]:
+    ft = FlagTree[C,F](self.value)
     for child in self.children:
       ft.add_child(child.to_flagtree())
     return ft
