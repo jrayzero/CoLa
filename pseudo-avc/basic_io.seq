@@ -1,5 +1,11 @@
 from ..cola.frontend.block import Block
 
+def read_frame(Y_frame, Cb_frame, Cr_frame, fd, cfg):
+  if cfg.color_space == YUV:
+    IOYUV.read_frame_planar(Y_frame, Cb_frame, Cr_frame, fd, cfg.bit_depth)
+  else:
+    raise ColaError()
+
 class IOYUV:
 
   def read_frame_planar(Y_frame, U_frame, V_frame, fd, bit_depth):

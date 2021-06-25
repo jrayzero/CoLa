@@ -4,7 +4,7 @@ SAMPLE_444 = 2
 
 YUV = 0
 
-MAX_INT = 0xFFFFFFFFFFFFFFFF
+MAX_INT = 9223372036854775807
 
 UNKNOWN_MODE = -1
 VERT_16x16 = 0
@@ -14,3 +14,51 @@ DCB_16x16 = 3
 DCC_16x16 = 4
 DCD_16x16 = 5
 PLANAR_16x16 = 6
+VERT_4x4 = 7
+HORIZ_4x4 = 8
+DCA_4x4 = 9
+DCB_4x4 = 10
+DCC_4x4 = 11
+DCD_4x4 = 12
+DIAG_DOWN_LEFT_4x4 = 13
+DIAG_DOWN_RIGHT_4x4 = 14
+VERT_RIGHT_4x4 = 15
+VERT_LEFT_4x4 = 16
+HORIZ_UP_4x4 = 17
+HORIZ_DOWN_4x4 = 18
+
+def mode_to_str(mode):
+  if mode == UNKNOWN_MODE:
+    return 'UNKNOWN_MODE'
+  elif mode == VERT_16x16:
+    return 'VERT_16x16'
+  elif mode == HORIZ_16x16:
+    return 'HORIZ_16x16'
+  elif mode == DCA_16x16:
+    return 'DCA_16x16'
+  elif mode == DCB_16x16:
+    return 'DCB_16x16'
+  elif mode == DCC_16x16:
+    return 'DCC_16x16'
+  elif mode == DCD_16x16:
+    return 'DCD_16x16'
+  elif mode == PLANAR_16x16:
+    return 'PLANAR_16x16'
+  elif mode == VERT_4x4:
+    return 'VERT_4X4'
+  elif mode == HORIZ_4x4:
+    return 'HORIZ_4x4'
+  elif mode == DCA_4x4:
+    return 'DCA_4x4'
+  elif mode == DCB_4x4:
+    return 'DCB_4x4'
+  elif mode == DCC_4x4:
+    return 'DCC_4x4'
+  elif mode == DCD_4x4:
+    return 'DCD_4x4'
+  elif mode == DIAG_DOWN_LEFT_4x4:
+    return 'DIAG_DOWN_LEFT_4x4'
+  elif mode == DIAG_DOWN_RIGHT_4x4:
+    return 'DIAG_DOWN_RIGHT_4x4'
+  else:
+    return ''

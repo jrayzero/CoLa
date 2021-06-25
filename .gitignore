@@ -10,3 +10,4 @@ apps/foo.seq
 apps/quantize.seq.old
 apps/test
 apps/*.csv
+pseudo-avc/run

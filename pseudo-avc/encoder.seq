@@ -43,16 +43,16 @@ for f in range(cfg.nframes):
   mbs_in_slice = 0
   for Y_mb,Cb_mb,Cr_mb in scan(Y_mbs, Cb_mbs, Cr_mbs):
     mblk_info[Y_mb].slice_id = cur_slice_id
-   # Intra prediction
-#    cost_16x16 = IntraPred.try_16x16(Y_mb, Cb_mb, Cr_mb, Y_mb, Cb_mb, Cr_mb, mblk_info, config)
-#    cost_4x4 = IntraPred.try_4x4(Y_mb, Cb_mb, Cr_mb, Y_mb, Cb_mb, Cr_mb, mblk_info)
-#    Pred.resolve_pred_options(cost_16x16, cost_4x4)
-   # update slice status
+    # Intra prediction
+    cost_16x16,pred_16x16,mode_16x16 = IntraPred.try_16x16(Y_mb, Cb_mb, Cr_mb, Y_mb, Cb_mb, Cr_mb, mblk_info, cfg)
+    # returns the full cost + individual preds and modes
+    cost_4x4,preds_4x4,modes_4x4 = IntraPred.try_4x4(Y_mb, Cb_mb, Cr_mb, Y_mb, Cb_mb, Cr_mb, mblk_info, cfg)
+    #    Pred.resolve_pred_options(cost_16x16, cost_4x4)
+    # update slice status
     mbs_in_slice += 1
-    if cfg.macroblocks_per_slice == mbs_in_slice:
+    if cfg.macroblocks_per_slice != -1 and cfg.macroblocks_per_slice == mbs_in_slice:
       mbs_in_slice = 0
       cur_slice_id += 1
-  print(mblk_info)
 ifd.close()
 ofd.flush()
 ofd.close()
