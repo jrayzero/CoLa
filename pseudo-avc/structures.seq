@@ -1,35 +1,26 @@
 from ..cola.frontend.flagtree import *
+from constants import *
 
 @dataclass(init=False)
-class SMblkInfo:
-
-  mode: int
-
-  def __init__(self):
-    self.mode = -1
-
-  def __str__(self):
-    s = ''
-    s += 'mode: ' + str(self.mode)
-    return s
-
-@dataclass(init=False)
-class MblkInfo[C]:
+class MblkInfo:
 
   slice_id: int
+  slice_type: int
   is_intra_pred: bool
   intra_pred_type: int
-  smblk_info: FlagTree[C,SMblkInfo]
+  mode: int # only relevant for leaf nodes
 
   def __init__(self):
     self.slice_id = -1
-    self.smblk_info = FlagTree[C,SMblkInfo]()
+    self.slice_type = I_SLICE
+    self.mode = UNKNOWN_MODE
+    self.intra_pred_type = -1
 
   def __str__(self):
     s = ''
     s += 'slice_id: ' + str(self.slice_id) + ','
+    s += 'slice_type: ' + str(self.slice_type) + ','
     s += 'is_intra_pred: ' + str(self.is_intra_pred) + ','
     s += 'intra_pred_type: ' + str(self.intra_pred_type) + ','
-    # This printout gets nasty looking real quick, so don't do it in general
-    s += 'smblk: [' + str(self.smblk_info) + ']'
+    s += 'mode: ' + str(self.mode)
     return s

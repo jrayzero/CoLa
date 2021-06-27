@@ -19,6 +19,9 @@ from syntax import *
 # TODO NOTE: deblocking used only for inter-prediction (but you would still filter the intra-predicted mbs).
 #  This means we need to store both filtered and unfiltered references
 
+# NOTE: I do some encoding so I count the bits for coefficients and signalling the mode. That's where the majority
+# of the bit cost comes from
+
 import sys
 
 if len(sys.argv) < 2:
@@ -52,7 +55,11 @@ Cr_recons_filt = Cr_frame.shallow_cast[int]()
 
 assert not cfg.skip_16x16_intra or not cfg.skip_4x4_intra
 
+# some holders for stats
 total_psnr = 0.0
+n_bits_mode_signal = 0
+n_bits_coeff = 0
+
 # main loop
 for f in range(cfg.nframes):
   if cfg.color_space == YUV:
@@ -66,10 +73,11 @@ for f in range(cfg.nframes):
   Cr_rmbs = Partition.grid(Cr_recons, 8)
   # don't pass in MblkInfo() because it will set all of the nodes to the same mblk, so then they are all just pointers to one another
   # TODO yikes this notation
-  mblk_info = Y_mbs.to_flagtree[MblkInfo[Tuple[ColaSlice,ColaSlice]]]()
+  mblk_info = Y_mbs.to_flagtree[MblkInfo]()
   cur_slice_id = 0
   mbs_in_slice = 0
   mb_idx = 0
+  # this tree represents the macroblocks as their 4x4 versions, which is the granularity they are encoded at
   for Y_mb,Y_rmb in scan(Y_mbs, Y_rmbs):
     mblk_info[Y_mb].slice_id = cur_slice_id
     # Intra prediction
@@ -80,17 +88,27 @@ for f in range(cfg.nframes):
       # returns the full cost + full 16x16 pred (made of 4x4 blocks)
       cost_4x4,mode_tree_4x4,quant_4x4,local_recons_4x4_unfilt = IntraPred.try_4x4(Y_mb, Y_rmb, mblk_info, cfg)
       if cost_16x16 <= cost_4x4:
+        mblk_info[Y_mb].mode = mode_16x16
+        mblk_info[Y_mb].intra_pred_type = INTRA_16x16
         Y_recons[local_recons_16x16_unfilt] = local_recons_16x16_unfilt
+        # TODO ENCODE QUANT
       else:
+        mblk_info[Y_mb] = mode_tree_4x4
         Y_recons[local_recons_4x4_unfilt] = local_recons_4x4_unfilt
+        # TODO ENCODE QUANT
     elif not cfg.skip_16x16_intra:
       cost_16x16, mode_16x16, DCs_16x16, quant_16x16, local_recons_16x16_unfilt = IntraPred.try_16x16(Y_mb, Y_rmb,
                                                                                                      mblk_info, cfg)
+      mblk_info[Y_mb].mode = mode_16x16
+      mblk_info[Y_mb].intra_pred_type = INTRA_16x16
       Y_recons[local_recons_16x16_unfilt] = local_recons_16x16_unfilt
+      # TODO ENCODE QUANT
     elif not cfg.skip_4x4_intra:
       # returns the full cost + full 16x16 pred (made of 4x4 blocks)
       cost_4x4, mode_tree_4x4, quant_4x4, local_recons_4x4_unfilt = IntraPred.try_4x4(Y_mb, Y_rmb, mblk_info, cfg)
+      mblk_info[Y_mb] = mode_tree_4x4
       Y_recons[local_recons_4x4_unfilt] = local_recons_4x4_unfilt
+      # TODO ENCODE QUANT
     # update slice status
     mbs_in_slice += 1
     if cfg.macroblocks_per_slice != -1 and cfg.macroblocks_per_slice == mbs_in_slice:
@@ -98,11 +116,12 @@ for f in range(cfg.nframes):
       cur_slice_id += 1
     mb_idx += 1
   # compute some stats on this frame
-  # TODO use filtered reconstruction?
+  # TODO use filtered reconstruction? Eh, probs doesn't matter. It ideally should just make my psnr better
   psnr = Cost.PSNR(int(Y_frame), Y_recons, cfg.bit_depth)
   note('frame ' + str(f) + ' has psnr ' + str(psnr))
   total_psnr += psnr
 
+  print(mblk_info)
 avg_psnr = total_psnr / float(cfg.nframes)
 note('Y_psnr/frame ' + str(avg_psnr))
 

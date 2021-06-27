@@ -168,6 +168,45 @@ class FlagTree[C,F]:
         return child._get_cover_inner(obj)
     raise ColaError('obj does not have appropriate location in tree')
 
+  def __setitem__(self, obj, ftree: FlagTree[C,F]):
+    """
+    Looks for the leaf that completely encapsulates the region specified and sets the flag. Fails if doesn't exist.
+    """
+    if not obj.base.fully_contained(self.value._cgrid_mapping):
+      raise ColaError('obj does not have appropriate location in tree')
+    if len(self.children) == 0: # you can't replace the root with this logic
+      raise ColaError('obj does not have appropriate location in tree')
+    else:
+      found = False
+      for idx,child in enumerate(self.children):
+        if obj.base.fully_contained(child.value._cgrid_mapping):
+          if len(child.children) == 0:
+            # replace child
+            self.children[idx] = ftree
+          else:
+            child._setitem_ftree_inner(obj, ftree)
+          found = True
+          break
+      if not found:
+        raise ColaError('obj does not have appropriate location in tree')
+
+  def _setitem_ftree_inner(self, obj, ftree):
+    if len(self.children) == 0:
+      raise ColaError('obj does not have appropriate location in tree')
+    else:
+      found = False
+      for idx,child in enumerate(self.children):
+        if obj.base.fully_contained(child.value._cgrid_mapping):
+          if len(child.children) == 0:
+            # replace child
+            self.children[idx] = ftree
+          else:
+            child._setitem_ftree_inner(obj, ftree)
+          found = True
+          break
+      if not found:
+        raise ColaError('obj does not have appropriate location in tree')
+
   def __setitem__[E2,T](self, obj: Block[E2,T,C], flag: F):
     self[View(obj)] = flag
 

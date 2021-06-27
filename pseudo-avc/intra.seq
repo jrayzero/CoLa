@@ -199,7 +199,7 @@ class IntraPred:
     best_costs = [MAX_INT] * 16
     full_pred = Y_mb.shallow_cast[int]()
     Y_4x4 = Partition.grid_quadtree(Y_mb, 2)[0]
-    mode_tree = Y_4x4.to_flagtree[SMblkInfo]()
+    mode_tree = Y_4x4.to_flagtree[MblkInfo]()
     quant = Y_mb.shallow_cast[int]() # holds output of quantization
     idx = 0
     # setup the local reconstruction
@@ -348,6 +348,7 @@ class IntraPred:
     total_cost = 0
     for cost in best_costs:
       total_cost += cost
+    mode_tree.flag.intra_pred_type = INTRA_4x4
     return total_cost,mode_tree,quant,local_Y_rmb
 
   def vertical_4x4(pred, ref_colocated):
