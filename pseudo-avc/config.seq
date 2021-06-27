@@ -35,6 +35,7 @@ class Config:
   color_space: int
   macroblocks_per_slice: int
   bit_depth: int
+  qp: int
   trace: bool
 
   def __init__(self, cfg_file):
@@ -46,6 +47,7 @@ class Config:
     self.input_sample = SAMPLE_420
     self.macroblocks_per_slice = 10
     self.bit_depth = 8
+    self.qp = 10
     self.trace = False
 
     fd = open(cfg_file, 'r')
@@ -103,21 +105,24 @@ class Config:
       raise ColaError()
     if 'macroblocks_per_slice' in params:
       self.macroblocks_per_slice = int(params['macroblocks_per_slice'])
+    if 'qp' in params:
+      self.qp = int(params['qp'])
     if 'trace' in params:
       self.trace = params['trace'] == 'true'
 
   def __str__(self):
     s = ''
-    s += 'input_file ' + str(self.input_file) + '\n'
-    s += 'output_file ' + str(self.output_file) + '\n'
-    s += 'nframes ' + str(self.nframes) + '\n'
-    s += 'lframe_width_in_pixels ' + str(self.lframe_width_in_pixels) + '\n'
-    s += 'lframe_height_in_pixels ' + str(self.lframe_height_in_pixels) + '\n'
-    s += 'cframe_width_in_pixels ' + str(self.cframe_width_in_pixels) + '\n'
-    s += 'cframe_height_in_pixels ' + str(self.cframe_height_in_pixels) + '\n'
-    s += 'input_sample ' + str(self.input_sample) + '\n'
-    s += 'color_space ' + str(self.color_space) + '\n'
-    s += 'macroblocks_per_slice ' + str(self.macroblocks_per_slice) + '\n'
-    s += 'bit_depth ' + str(self.bit_depth) + '\n'
-    s += 'trace ' + str(self.trace) + '\n'
+    s += 'input_file: ' + str(self.input_file) + '\n'
+    s += 'output_file: ' + str(self.output_file) + '\n'
+    s += 'nframes: ' + str(self.nframes) + '\n'
+    s += 'lframe_width_in_pixels: ' + str(self.lframe_width_in_pixels) + '\n'
+    s += 'lframe_height_in_pixels: ' + str(self.lframe_height_in_pixels) + '\n'
+    s += 'cframe_width_in_pixels: ' + str(self.cframe_width_in_pixels) + '\n'
+    s += 'cframe_height_in_pixels: ' + str(self.cframe_height_in_pixels) + '\n'
+    s += 'input_sample: ' + str(self.input_sample) + '\n'
+    s += 'color_space: ' + str(self.color_space) + '\n'
+    s += 'macroblocks_per_slice: ' + str(self.macroblocks_per_slice) + '\n'
+    s += 'bit_depth: ' + str(self.bit_depth) + '\n'
+    s += 'qp: ' + str(self.qp) + '\n'
+    s += 'trace: ' + str(self.trace) + '\n'
     return s

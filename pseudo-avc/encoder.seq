@@ -9,6 +9,9 @@ from partition import *
 from intra import *
 from config import *
 from structures import *
+from trav import *
+from transforms import *
+from quantize import *
 
 import sys
 
@@ -29,6 +32,9 @@ Y_frame = Block.make[byte](lframe_h, lframe_w)
 Cb_frame = Block.make[byte](cframe_h, cframe_w)
 Cr_frame = Block.make[byte](cframe_h, cframe_w)
 
+# buffer for the final encoding
+enc = Bits[64]()
+
 # main loop
 for f in range(cfg.nframes):
   if cfg.color_space == YUV:
@@ -38,30 +44,58 @@ for f in range(cfg.nframes):
   Cb_mbs = Partition.grid(Cb_frame, 8)
   Cr_mbs = Partition.grid(Cr_frame, 8)
   # don't pass in MblkInfo() because it will set all of the nodes to the same mblk, so then they are all just pointers to one another
-  # TODO yikes this notaton
+  # TODO yikes this notation
   mblk_info = Y_mbs.to_flagtree[MblkInfo[Tuple[ColaSlice,ColaSlice]]]()
   cur_slice_id = 0
   mbs_in_slice = 0
   for Y_mb,Cb_mb,Cr_mb in scan(Y_mbs, Cb_mbs, Cr_mbs):
     mblk_info[Y_mb].slice_id = cur_slice_id
     # Intra prediction
-    cost_16x16,pred_16x16,mode_16x16 = IntraPred.try_16x16(Y_mb, Cb_mb, Cr_mb, Y_mb, Cb_mb, Cr_mb, mblk_info, cfg)
     # returns the full cost + individual preds and modes
     cost_4x4,pred_4x4,mode_tree_4x4 = IntraPred.try_4x4(Y_mb, Cb_mb, Cr_mb, Y_mb, Cb_mb, Cr_mb, mblk_info, cfg)
     mblk_info[Y_mb].is_intra_pred = True
     if cost_16x16 < cost_4x4:
       mblk_info[Y_mb].intra_pred_type = INTRA_16x16
-      # TODO do rest of pipeline + recons
+      # TODO need to work out this cast because it is very unnecessary (delayed cast?)
+      residual = int(Y_mb) - pred_16x16
+      residual.remap(Y_mb) # need to set the cgrid
+      xform_blks = Partition.grid(residual, 4)
+      DCs = Block(residual[::4,::4])
+      coeffs = Block(residual)
+      coeff_blks = Partition.grid(coeffs, 4)
+      for resid,coeff_blk in scan(xform_blks, coeff_blks):
+        DCT.dct4x4(resid, coeff_blk)
+        # store the DCs for later
+        val = coeff_blk(0)
+        DCs[coeff_blk[0]] = val
+        Quantize.quantize_4x4(coeff_blk, coeff_blk, cfg.qp)
+        # TODO entropy code ACs
+      # handle the DCs now
+      Hadamard.hadamard4x4(DCs, DCs)
+      Quantize.quantize_4x4(DCs, DCs, cfg.qp)
+      # TODO entropy code DCs
+      # now reconstruction
+      Hadamard.ihadamard4x4(DCs, coeffs[::4,::4])
+      coeff_blks = Partition.grid(coeffs, 4)
+      for cblk in scan(coeff_blks):
+        Quantize.dequantize_4x4(cblk, cblk, cfg.qp)
+        DCT.idct4x4(cblk, cblk)
+        cblk >>= 6
+      # coeffs now contains the reconstruction of the residual
+      # TODO oof casting. want to do       Y_frame[coeffs] = coeffs + pred_16x16
+      for y,c,p in scan(Y_frame[coeffs], coeffs, pred_16x16):
+        y[0] = byte(c() + p())
     else:
       mblk_info[Y_mb].intra_pred_type = INTRA_4x4
       mblk_info[Y_mb].smblk_info = mode_tree_4x4
+      # TODO need to work out this cast because it is very unnecessary (delayed cast?)
+      residual = int(Y_mb) - pred_16x16
       # TODO do rest of pipeline + recons
     # update slice status
     mbs_in_slice += 1
     if cfg.macroblocks_per_slice != -1 and cfg.macroblocks_per_slice == mbs_in_slice:
       mbs_in_slice = 0
       cur_slice_id += 1
-  print(mblk_info)
 ifd.close()
 ofd.flush()
 ofd.close()
