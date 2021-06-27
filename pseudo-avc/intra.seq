@@ -46,7 +46,7 @@ class IntraPred:
         return True
     return False
 
-  def try_16x16_2(Y_mb, Y_rmb, mblk_info, cfg):
+  def try_16x16(Y_mb, Y_rmb, mblk_info, cfg):
     left,up,up_left = IntraPred.left_available(Y_mb, mblk_info),\
                       IntraPred.up_available(Y_mb, mblk_info),\
                       IntraPred.up_left_available(Y_mb, mblk_info)
@@ -193,7 +193,8 @@ class IntraPred:
       for x in range(16):
         clip_val = (a + b * (x - 7) + c * (y - 7) + 16) >> 5
         pred[y,x] = (clip1y(clip_val, bit_depth))
-  def try_4x4_2(Y_mb, Y_rmb, mblk_info, cfg):
+
+  def try_4x4(Y_mb, Y_rmb, mblk_info, cfg):
     # store best mode for each of the 16 4x4 blocks
     best_costs = [MAX_INT] * 16
     full_pred = Y_mb.shallow_cast[int]()
