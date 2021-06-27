@@ -11,3 +11,6 @@ apps/quantize.seq.old
 apps/test
 apps/*.csv
 pseudo-avc/run
+pseudo-avc/encoder.o
+pseudo-avc/encoder
+pseudo-avc/out*
