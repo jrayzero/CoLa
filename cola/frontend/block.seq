@@ -789,7 +789,7 @@ class Multidim[E,T,C]:
     for i in range(self.nunits()):
       self[i] = i+add
 
-  def remap(self, other: Multidim[E,T,C]):
+  def remap[E2](self, other: Multidim[E2,T,C]):
     """
     Remap self to point to other's cgrid. Modifies self. Only works for block's without relatives
     """
@@ -797,9 +797,9 @@ class Multidim[E,T,C]:
       raise ColaError()
     if len(self._stored_relatives) != 0: # can't remap you to relatives
       raise ColaError()
+    self._cgrid = other._cgrid # need to set this before call the next condition
     if not self.fully_contained(other):
       raise ColaError() # must be within
-    self._cgrid = other._cgrid
 
   def read(self, fd, bytes_per_elem: int, nelems: int):
     """
@@ -882,11 +882,11 @@ class Block[E,T,C]:
   def origin(self) -> T:
     return self.base.origin()
 
-  def remap(self, other: Block[E,T,C]) -> Block[E,T,C]:
+  def remap[E2](self, other: Block[E2,T,C]) -> Block[E,T,C]:
     self.base.remap(other.base)
     return self
 
-  def remap(self, other: View[E,T,C]) -> Block[E,T,C]:
+  def remap[E2](self, other: View[E2,T,C]) -> Block[E,T,C]:
     self.base.remap(other.base)
     return self
 
