@@ -1,0 +1,27 @@
+from ..cola.frontend.block import *
+from ..cola.frontend.scan import *
+from basic_io import *
+from partition import *
+from config import *
+from cost import *
+import sys
+
+raw = sys.argv[1] if len(sys.argv) >= 3 else 'foreman.qcif.3.420.yuv'
+recons = sys.argv[2] if len(sys.argv) >= 3 else '/Users/jray/ColaProjects/ref_code/JM/bin/test_rec.yuv'
+
+ifd_raw = open('foreman.qcif.3.420.yuv', 'rb')
+ifd_recons = open('/Users/jray/ColaProjects/ref_code/JM/bin/test_rec.yuv', 'rb')
+
+lframe_h,lframe_w = 144,176
+cframe_h,cframe_w = 144//2,176//2
+
+Y_frame_raw = Block.make[byte](lframe_h, lframe_w)
+Y_frame_rec = Block.make[byte](lframe_h, lframe_w)
+IOYUV.read_frame_planar(Y_frame_raw, Block.make[byte](cframe_h, cframe_w), Block.make[byte](cframe_h, cframe_w), ifd_raw, 8)
+IOYUV.read_frame_planar(Y_frame_rec, Block.make[byte](cframe_h, cframe_w), Block.make[byte](cframe_h, cframe_w), ifd_recons, 8)
+
+# compute the psnr
+print 'PSNR ' + str(Cost.PSNR(int(Y_frame_raw), int(Y_frame_rec), 8))
+
+ifd_raw.close()
+ifd_recons.close()
