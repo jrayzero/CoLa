@@ -385,8 +385,6 @@ class Multidim[E,T,C]:
     """
     total_idxs = 1 + staticlen(idxs)
     if total_idxs != 1 and total_idxs != staticlen(self._dims):
-#      print('TOTAL IDXS ' + str(total_idxs))
-#      print('DIMS ' + str(staticlen(self.dims)))
       raise ColaError()
     for idx in idxs:
       # TODO does this statically assert ?
@@ -791,15 +789,16 @@ class Multidim[E,T,C]:
 
   def remap[E2](self, other: Multidim[E2,T,C]):
     """
-    Remap self to point to other's cgrid. Modifies self. Only works for block's without relatives
+    Remap self to point to other's cgrid and update its mapping. Modifies self. Only works for block's without relatives.
     """
     if not self._is_owner: # doesn't make sense to remap a view
       raise ColaError()
     if len(self._stored_relatives) != 0: # can't remap you to relatives
       raise ColaError()
-    self._cgrid = other._cgrid # need to set this before call the next condition
-    if not self.fully_contained(other):
-      raise ColaError() # must be within
+    if self._dims != other._dims:
+      raise ColaError()
+    self._cgrid = other._cgrid
+    self._cgrid_mapping = other._cgrid_mapping
 
   def read(self, fd, bytes_per_elem: int, nelems: int):
     """
