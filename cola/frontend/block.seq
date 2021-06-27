@@ -464,27 +464,29 @@ class Multidim[E,T,C]:
     if staticlen(other_origin) == 0:
       return ()
     else:
-      # 0 1 2 3 4 5
-      #   1     3
-      # if fails: other\'s origin does not fall on self\'s stride line. This means that other's
-      # origin should fall on a point that self's falls also falls on
-      # TODO this condition is incorrect. I'm ignoring it for now.
-      # shift both origins to start from 0
-#      if other_origin[0] % (self_cgrid_mapping[0].start+self_cgrid_mapping[0].stride) != 0:
-#        raise ColaError(str(other_origin[0]) + ' ' + str(self_cgrid_mapping[0]))
-      # if fails: 
-#      if other_cgrid_mapping[0].stride % self_cgrid_mapping[0].stride != 0:
-#        raise ColaError('other\'s stride is not a multiple of self\'s stride')
-      # get the stop of other RELATIVE to self
-      stop = other_cgrid_mapping[0].stop - self_cgrid_mapping[0].start-1
-      # creating the mapping RELATIVE to self 
+      # It doesn't make sense if other's stride is < your stride (unless it just has one element) because that would
+      # mean accessing elements within you that aren't actually a part of you.
+      # Check some preconditions
+      # 1) other starts on a multiple of self's stride
+      if other_cgrid_mapping[0].start % self_cgrid_mapping[0].stride != 0:
+        raise ColaError()
+      # 2) The stride of other is a multiple of self's stride. UNLESS the size of the region that will be accessed is 1,
+      # then it doesn't matter the stride
+      # TODO This logic might not be totally right...
+      if other_cgrid_mapping[0].stride % self_cgrid_mapping[0].stride != 0:
+        # not a multiple
+        sz = other_cgrid_mapping[0].stop - other_cgrid_mapping[0].start
+        if sz // other_cgrid_mapping[0].stride > 1:
+          # you are specifying too many elements, making it an invalid stride
+          raise ColaError(str(other_cgrid_mapping))
+      stop = other_cgrid_mapping[0].stop - self_cgrid_mapping[0].start - 1
+      # creating the mapping RELATIVE to self
       return (ColaSlice(relative_origin[0]//self_cgrid_mapping[0].stride, \
                         stop//self_cgrid_mapping[0].stride+1, \
-                        other_cgrid_mapping[0].stride // self_cgrid_mapping[0].stride),) + \
+                        other_cgrid_mapping[0].stride),) + \
                         Multidim._get_mapping(self_cgrid_mapping[1:], other_cgrid_mapping[1:], other_origin[1:], relative_origin[1:])       
 
   def __getitem__[E2](self, other: Multidim[E2,T,C]) -> Multidim[E,T,C]:    
-    
     """
     Returns the region in self corresponding to other. Both self and other must share the same cgrid.
     However, other doesn't actually need to be *within* self according to these requirements,
