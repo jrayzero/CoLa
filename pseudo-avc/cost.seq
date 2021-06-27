@@ -2,6 +2,8 @@ from ..cola.frontend.block import *
 from ..cola.frontend.scan import scan
 from transforms import Hadamard
 
+import math
+
 # https://www.intechopen.com/books/multimedia/bit-rate-estimation-for-cost-function-of-h-264-avc
 # https://link.springer.com/content/pdf/10.1007/s11760-011-0267-z.pdf
 
@@ -33,3 +35,9 @@ class Cost:
     for h in scan(output):
       cost += abs(h())
     return cost   
+
+  def PSNR(orig, recons, bit_depth) -> float:
+    assert orig.nunits() == recons.nunits()
+    mse = float(Cost.ssd(orig, recons)) /  orig.nunits()
+    psnr = 10 * math.log10(((2**bit_depth - 1) ** 2) / mse)
+    return psnr

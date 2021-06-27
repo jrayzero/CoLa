@@ -33,7 +33,7 @@ ofd = open(cfg.output_file, 'wb')
 lframe_w,lframe_h = cfg.lframe_width_in_pixels, cfg.lframe_height_in_pixels
 cframe_w,cframe_h = cfg.cframe_width_in_pixels, cfg.cframe_height_in_pixels
 
-# holds the raw pixels
+# holds the raw pixels for a single frame
 Y_frame = Block.make[byte](lframe_h, lframe_w)
 Cb_frame = Block.make[byte](cframe_h, cframe_w)
 Cr_frame = Block.make[byte](cframe_h, cframe_w)
@@ -50,26 +50,9 @@ Cr_recons_filt = Cr_frame.shallow_cast[int]()
 
 # for inter-prediction, we need our reference pixels with the loop filter applied
 
-# buffer for the final encoding
-enc = Bits[64]()
+assert not cfg.skip_16x16_intra or not cfg.skip_4x4_intra
 
-# Set up some initial syntax to write out
-sps = SPS()
-sps.profile_idc = 66
-sps.level_idc = 62 # just set it high so we don't have to worry about it
-sps.seq_parameter_set_id = 0
-sps.pic_height_in_map_units_minus1 = Y_frame.dims()[0] // 16 - 1
-sps.pic_width_in_mbs_minus1 = Y_frame.dims()[1] // 16 - 1
-
-pps = PPS()
-pps.pic_parameter_set_id = 0
-pps.seq_parameter_set_id = 0
-pps.num_ref_idx_l0_default_active_minus1 = 4
-pps.num_ref_idx_l1_default_active_minus1 = 4
-
-Syntax.write_sps(sps, enc)
-Syntax.write_pps(pps, enc)
-
+total_psnr = 0.0
 # main loop
 for f in range(cfg.nframes):
   if cfg.color_space == YUV:
@@ -86,42 +69,42 @@ for f in range(cfg.nframes):
   mblk_info = Y_mbs.to_flagtree[MblkInfo[Tuple[ColaSlice,ColaSlice]]]()
   cur_slice_id = 0
   mbs_in_slice = 0
-  write_slice_header = True
   mb_idx = 0
   for Y_mb,Y_rmb in scan(Y_mbs, Y_rmbs):
-    if write_slice_header:
-      sh = SliceHeader()
-      sh.first_mb_in_slice = mb_idx
-      sh.slice_type = I_SLICE_ALL
-      sh.pic_parameter_set_id = 0
-      sh.frame_num = f
-      sh.idr_pic_id = 0
-      Syntax.write_slice_header(sh, sps, pps, enc)
-      Syntax.write_slice_data_preamble(pps, enc)
-    write_slice_header = False
     mblk_info[Y_mb].slice_id = cur_slice_id
     # Intra prediction
-    cost_16x16,mode_16x16,DCs_16x16,quant_16x16,local_recons_16x16_unfilt = \
-      IntraPred.try_16x16(Y_mb, Y_rmb, mblk_info, cfg)
-    # returns the full cost + full 16x16 pred (made of 4x4 blocks)
-    cost_4x4,mode_tree_4x4,quant_4x4,local_recons_4x4_unfilt = \
-      IntraPred.try_4x4(Y_mb, Y_rmb, mblk_info, cfg)
     mblk_info[Y_mb].is_intra_pred = True
-    if cost_16x16 <= cost_4x4:
+    if not cfg.skip_16x16_intra and not cfg.skip_4x4_intra:
+      # do both
+      cost_16x16,mode_16x16,DCs_16x16,quant_16x16,local_recons_16x16_unfilt = IntraPred.try_16x16(Y_mb, Y_rmb, mblk_info, cfg)
+      # returns the full cost + full 16x16 pred (made of 4x4 blocks)
+      cost_4x4,mode_tree_4x4,quant_4x4,local_recons_4x4_unfilt = IntraPred.try_4x4(Y_mb, Y_rmb, mblk_info, cfg)
+      if cost_16x16 <= cost_4x4:
+        Y_recons[local_recons_16x16_unfilt] = local_recons_16x16_unfilt
+      else:
+        Y_recons[local_recons_4x4_unfilt] = local_recons_4x4_unfilt
+    elif not cfg.skip_16x16_intra:
+      cost_16x16, mode_16x16, DCs_16x16, quant_16x16, local_recons_16x16_unfilt = IntraPred.try_16x16(Y_mb, Y_rmb,
+                                                                                                     mblk_info, cfg)
       Y_recons[local_recons_16x16_unfilt] = local_recons_16x16_unfilt
-      # TODO entropy code everything (from DCs and quant)
-    else:
+    elif not cfg.skip_4x4_intra:
+      # returns the full cost + full 16x16 pred (made of 4x4 blocks)
+      cost_4x4, mode_tree_4x4, quant_4x4, local_recons_4x4_unfilt = IntraPred.try_4x4(Y_mb, Y_rmb, mblk_info, cfg)
       Y_recons[local_recons_4x4_unfilt] = local_recons_4x4_unfilt
-      # TODO entropy code everything (from quant)
     # update slice status
     mbs_in_slice += 1
     if cfg.macroblocks_per_slice != -1 and cfg.macroblocks_per_slice == mbs_in_slice:
       mbs_in_slice = 0
       cur_slice_id += 1
-      write_slice_header = True
     mb_idx += 1
+  # compute some stats on this frame
+  # TODO use filtered reconstruction?
+  psnr = Cost.PSNR(int(Y_frame), Y_recons, cfg.bit_depth)
+  note('frame ' + str(f) + ' has psnr ' + str(psnr))
+  total_psnr += psnr
 
-print(enc)
+avg_psnr = total_psnr / float(cfg.nframes)
+note('Y_psnr/frame ' + str(avg_psnr))
 
 ifd.close()
 ofd.flush()
