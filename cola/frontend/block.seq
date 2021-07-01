@@ -84,7 +84,7 @@ class Multidim[E,T,C]:
     self._cgrid_mapping = tuple(ColaSlice(0,d,1) for d in dims)
     self._nunits = mul_reduce(self._dims)
     if self._nunits != len(elems):
-      raise ColaError('Inconsistent number of elements')
+      raise ColaError('Inconsistent number of elements ' + str(self._nunits) + ' ' + str(len(elems)))
     self._buffer_owner = self
     self._buffer = Array[E](self.nunits())
     for n in range(self._nunits):
@@ -395,7 +395,7 @@ class Multidim[E,T,C]:
     else:
       x = self[(idx,) + tuple(i for i in idxs)]
       if not x.fully_contained(self._buffer_owner): # check in-bounds
-        raise ColaError()
+        raise ColaError(str(idx) + ',' + str(idxs))
       return x()
 
   def clamp(self) -> E:
@@ -1449,7 +1449,7 @@ class Multidim[E,T,C]:
   def __abs__(self):
     res = Multidim[E,T,C](self.dims())
     for n in range(self.nunits()):
-      self[n] = abs(self(n))
+      res[n] = abs(self(n))
     return res
 
   def __neg__(self):

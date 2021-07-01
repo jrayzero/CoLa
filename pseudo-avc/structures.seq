@@ -2,19 +2,22 @@ from ..cola.frontend.flagtree import *
 from constants import *
 
 @dataclass(init=False)
-class MblkInfo:
+class BlkInfo:
 
   slice_id: int
   slice_type: int
   is_intra_pred: bool
   intra_pred_type: int
   mode: int # only relevant for leaf nodes
+  total_coeffs: int # only relevant for leaf nodes
 
   def __init__(self):
     self.slice_id = -1
     self.slice_type = I_SLICE
+    self.is_intra_pred = False
     self.mode = UNKNOWN_MODE
     self.intra_pred_type = -1
+    self.total_coeffs = 0
 
   def __str__(self):
     s = ''
@@ -22,5 +25,7 @@ class MblkInfo:
     s += 'slice_type: ' + str(self.slice_type) + ','
     s += 'is_intra_pred: ' + str(self.is_intra_pred) + ','
     s += 'intra_pred_type: ' + str(self.intra_pred_type) + ','
-    s += 'mode: ' + str(self.mode)
+    s += 'mode: ' + str(self.mode) + ','
+    s += 'total_coeffs: ' + str(self.total_coeffs)
+
     return s

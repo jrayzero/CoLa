@@ -1,5 +1,6 @@
 from ..cola.frontend.lut import *
 from ..cola.frontend.block import *
+from ..cola.frontend.scan import *
 from transforms import DCT
 import math
 
@@ -89,153 +90,37 @@ class Quantize:
     v = Quantize.Vi4(QP)
     return (vals * v) << (QP//6)
 
-# class H264Quantize8x8:
-#
-#   def v8x8():
-#     """
-#     See table on top of page 202 in Richardson's book
-#     """
-#     return LUT((6,6),
-#                [20, 18, 32, 19, 25, 24,
-#                 22, 19, 35, 21, 28, 26,
-#                 26, 23, 42, 24, 33, 31,
-#                 28, 25, 45, 26, 35, 33,
-#                 32, 28, 51, 30, 40, 38,
-#                 36, 32, 58, 34, 46, 43])
-#
-#   def Vi8(QP: int):
-#     """
-#     See second table on page 202 in Richardson's book
-#     """
-#     mod = QP % 6
-#     v = H264Quantize8x8.v8x8()
-#     return LUT((8,8),
-#                [v(mod,0)<<QP//6,v(mod,3)<<QP//6,v(mod,4)<<QP//6,v(mod,3)<<QP//6,v(mod,0)<<QP//6,v(mod,3)<<QP//6,v(mod,4)<<QP//6,v(mod,3)<<QP//6,
-#                 v(mod,3)<<QP//6,v(mod,1)<<QP//6,v(mod,5)<<QP//6,v(mod,1)<<QP//6,v(mod,3)<<QP//6,v(mod,1)<<QP//6,v(mod,5)<<QP//6,v(mod,1)<<QP//6,
-#                 v(mod,4)<<QP//6,v(mod,5)<<QP//6,v(mod,2)<<QP//6,v(mod,5)<<QP//6,v(mod,4)<<QP//6,v(mod,5)<<QP//6,v(mod,2)<<QP//6,v(mod,5)<<QP//6,
-#                 v(mod,3)<<QP//6,v(mod,1)<<QP//6,v(mod,5)<<QP//6,v(mod,1)<<QP//6,v(mod,3)<<QP//6,v(mod,1)<<QP//6,v(mod,5)<<QP//6,v(mod,1)<<QP//6,
-#                 v(mod,0)<<QP//6,v(mod,3)<<QP//6,v(mod,4)<<QP//6,v(mod,3)<<QP//6,v(mod,0)<<QP//6,v(mod,3)<<QP//6,v(mod,4)<<QP//6,v(mod,3)<<QP//6,
-#                 v(mod,3)<<QP//6,v(mod,1)<<QP//6,v(mod,5)<<QP//6,v(mod,1)<<QP//6,v(mod,3)<<QP//6,v(mod,1)<<QP//6,v(mod,5)<<QP//6,v(mod,1)<<QP//6,
-#                 v(mod,4)<<QP//6,v(mod,5)<<QP//6,v(mod,2)<<QP//6,v(mod,5)<<QP//6,v(mod,4)<<QP//6,v(mod,5)<<QP//6,v(mod,2)<<QP//6,v(mod,5)<<QP//6,
-#                 v(mod,3)<<QP//6,v(mod,1)<<QP//6,v(mod,5)<<QP//6,v(mod,1)<<QP//6,v(mod,3)<<QP//6,v(mod,1)<<QP//6,v(mod,5)<<QP//6,v(mod,1)<<QP//6])
-#
-#   def Sf8():
-#     return LUT((8,8),
-#                [1/512, 1/544, 1/(128*math.sqrt(10)), 1/544, 1/512, 1/544, 1/(128*math.sqrt(10)), 1/544,
-#                 1/544, 1/578, 1/(136*math.sqrt(10)), 1/578, 1/544, 1/578, 1/(136*math.sqrt(10)), 1/578,
-#                 1/(128*math.sqrt(10)), 1/(136*math.sqrt(10)), 1/320, 1/(136*math.sqrt(10)), 1/(128*math.sqrt(10)), 1/(136*math.sqrt(10)), 1/320, 1/(136*math.sqrt(10)),
-#                 1/544, 1/578, 1/(136*math.sqrt(10)), 1/578, 1/544, 1/578, 1/(136*math.sqrt(10)), 1/578,
-#                 1/512, 1/544, 1/(128*math.sqrt(10)), 1/544, 1/512, 1/544, 1/(128*math.sqrt(10)), 1/544,
-#                 1/544, 1/578, 1/(136*math.sqrt(10)), 1/578, 1/544, 1/578, 1/(136*math.sqrt(10)), 1/578,
-#                 1/(128*math.sqrt(10)), 1/(136*math.sqrt(10)), 1/320, 1/(136*math.sqrt(10)), 1/(128*math.sqrt(10)), 1/(136*math.sqrt(10)), 1/320, 1/(136*math.sqrt(10)),
-#                 1/544, 1/578, 1/(136*math.sqrt(10)), 1/578, 1/544, 1/578, 1/(136*math.sqrt(10)), 1/578])
-#
-#
-#   def Si8():
-#     return LUT((8,8),
-#                [1/8, 2/17, 1/(math.sqrt(40)), 2/17, 1/8, 2/17, 1/(math.sqrt(40)), 2/17,
-#                 2/17, 32/289, 8/(17*math.sqrt(10)), 32/289, 2/17, 32/289, 8/(17*math.sqrt(10)), 32/289,
-#                 1/(math.sqrt(40)), 8/(17*math.sqrt(10)), 1/5, 8/(17*math.sqrt(10)), 1/(math.sqrt(40)), 8/(17*math.sqrt(10)), 1/5, 8/(17*math.sqrt(10)),
-#                 2/17, 32/289, 8/(17*math.sqrt(10)), 32/289, 2/17, 32/289, 8/(17*math.sqrt(10)), 32/289,
-#                 1/8, 2/17, 1/(math.sqrt(40)), 2/17, 1/8, 2/17, 1/(math.sqrt(40)), 2/17,
-#                 2/17, 32/289, 8/(17*math.sqrt(10)), 32/289, 2/17, 32/289, 8/(17*math.sqrt(10)), 32/289,
-#                 1/(math.sqrt(40)), 8/(17*math.sqrt(10)), 1/5, 8/(17*math.sqrt(10)), 1/(math.sqrt(40)), 8/(17*math.sqrt(10)), 1/5, 8/(17*math.sqrt(10)),
-#                 2/17, 32/289, 8/(17*math.sqrt(10)), 32/289, 2/17, 32/289, 8/(17*math.sqrt(10)), 32/289
-#                ])
-#
-#   def S8():
-#     return H264Quantize8x8.Si8() * H264Quantize8x8.Sf8()
-#
-#   def Mf8(QP: int):
-#     Vi8 = H264Quantize8x8.Vi8(QP)
-#     # round by truncation
-#     Mf8 = int(BlockOps.round(H264Quantize8x8.S8() * float(2**30))) // Vi8
-#     return Mf8
-#
-#   def estimate_Qstep(QP: int):
-#     return float(H264Quantize8x8.Vi8(QP)) / (H264Quantize8x8.Si8()*float(2**8))
-#
-#   def quantize(coeffs, QP: int):
-#     Mf8 = H264Quantize8x8.Mf8(QP)
-#     tmp = Mf8 * coeffs
-#     q = tmp >>(22+QP//6)
-#     return q
-#
-#   def xform_and_quant(vals, QP: int):
-#     coeffs = DCT.core_8x8_transform(vals)
-#     return H264Quantize8x8.quantize(coeffs, QP)
-#
-#   def dequantize(vals, QP: int):
-#     """
-#     See 7.2.3.6 in Richardson's book.
-#     If you use this function and then run the output through the
-#     core inverse transform, make sure to scale all the transform
-#     outputs by 1/2^6 and then round the whole thing
-#     """
-#     v = H264Quantize8x8.Vi8(QP)
-#     return (vals * v)
-#
-#   def dequant_and_inv_xform(vals, QP: int):
-#     dq = H264Quantize8x8.dequantize(vals, QP)
-#     return DCT.core_8x8_itransform(dq) >> 8
+  def rshift_rnd_sf(x, a):
+    return ((x + (1 << (a - 1))) >> a)
 
-# @test
-# def do_test():
-#   print 'Running quantize.seq tests'
-#   # 4x4 follows example from Richardson book
-#   blk4x4 = Block.make[int](4,4)
-#   blk4x4[0] = 961
-#   blk4x4[1] = -41
-#   blk4x4[2] = 15
-#   blk4x4[3] = -48
-#   blk4x4[4] = -34
-#   blk4x4[5] = 72
-#   blk4x4[6] = -30
-#   blk4x4[7] = -104
-#   blk4x4[8] = -15
-#   blk4x4[9] = 3
-#   blk4x4[10] = 15
-#   blk4x4[11] = 24
-#   blk4x4[12] = 13
-#   blk4x4[13] = 81
-#   blk4x4[14] = -5
-#   blk4x4[15] = 8
-#   qp = 6
-#   quant = H264Quantize4x4.quantize(blk4x4, qp)
-#   assert quant == [192, -6, 2, -6, -5, 5, -4, -9, -3, 0, 2, 2, 1, 6, -1, 0]
-#   dequant = DCT.core_4x4_itransform(H264Quantize4x4.dequantize(quant, qp)) >> 6
-#   assert dequant == [55, 64, 50, 58, 52, 63, 56, 66, 61, 62, 61, 63, 58, 51, 63, 68]
-#   qp = 18
-#   quant = H264Quantize4x4.quantize(blk4x4, qp)
-#   assert quant == [48, -2, 0, -2, -2, 1, -1, -3, -1, 0, 0, 0, 0, 1, -1, 0]
-#   dequant = DCT.core_4x4_itransform(H264Quantize4x4.dequantize(quant, qp)) >> 6
-#   assert dequant == [48, 67, 48, 57, 53, 62, 54, 67, 59, 62, 64, 64, 59, 53, 65, 69]
-#   assert H264Quantize8x8.estimate_Qstep(0)(0) == 0.625
-#   assert H264Quantize8x8.estimate_Qstep(1)(0) == 0.6875
-#   assert H264Quantize8x8.estimate_Qstep(2)(0) == 0.8125
-#   assert H264Quantize8x8.estimate_Qstep(3)(0) == 0.875
-#   assert H264Quantize8x8.estimate_Qstep(4)(0) == 1.0
-#   assert H264Quantize8x8.estimate_Qstep(5)(0) == 1.125
-#   # TODO some of the 8x8 stuff isn't working right
-# #  blk8x8 = Block.make((8,8),
-# #                      [961, -41, 15, -48, -34, 72, -30, -104,
-# #                       -15, 3, 15, 24, 13, 81, -5, 8,
-# #                       961, -41, 15, -1050, -34, 72, -30, -104,
-# #                       -15, 3, 15, 24, 13, 81, -5, 8,
-# #                       961, -41, 15, -48, -34, 72, -30, -104,
-# #                       -15, 3, 15, 3700, 13, 81, -5, 8,
-# #                       961, -41, 15, -48, -34, 72, -30, -104,
-# #                       -15, 3, 15, 24, 13, 81, -5, 8,
-# #                      ])
-# #  qp = 2
-# #  quant = H264Quantize8x8.quantize(blk8x8, qp)
-# #  assert quant == [2,-1,0,-1,-1,0,-1,-1,
-# #                   -1,0,0,0,0,0,-1,0,
-# #                   2,-1,0,-4,-1,0,-1,-1,
-# #                   -1,0,0,0,0,0,-1,0,
-# #                   2,-1,0,-1,-1,0,-1,-1,
-# #                   -1,0,0,7,0,0,-1,0,
-# #                   2,-1,0,-1,-1,0,-1,-1,
-# #                   -1,0,0,0,0,0,-1,0]
-# #  dequant = H264Quantize8x8.dequant_and_inv_xform(quant, qp)
-# #
+  def quantize_4x4_JM_normal(coeffs, quant, cfg):
+    # This is my adaptation of what JM does. It has some extra stuff in its quant method because
+    # it also wraps in some stuff for prepping for entropy coding, which makes the function unnecessarily
+    # bloated for a simple stupid quantization function. Some of the extra computation is in my corresponding
+    # dequant function.
+    QP = cfg.qp
+    qp_per = cfg.qp_per_matrix[QP]
+    q_bits = 15 + qp_per
+    for _coeff,_q,_scale,_iscale in scan(coeffs, quant, cfg.scale_quant_matrix[QP%6,:,:], cfg.inv_scale_quant_matrix[QP%6,:,:]):
+      coeff = _coeff()
+      scaled_coeff = abs(coeff) * _scale()
+      level = scaled_coeff + cfg.offset_comp[QP//6]
+      level >>= q_bits
+      # here's where there'd be extra stuff from JM. But you want to encode level at this point because it is smaller.
+      # otherwise if you do the rest of the JM stuff and then encode that, you get numbers that are like 200x bigger.
+      _q[0] = level
+
+  def dequantize_4x4_JM_normal(quant, coeffs, cfg):
+    QP = cfg.qp
+    qp_per = cfg.qp_per_matrix[QP]
+    # some of this may actually be unnecessary, but I just want to match some output from JM
+    for _level,_coeff,_iscale in scan(quant, coeffs, cfg.inv_scale_quant_matrix[QP%6,:,:]):
+      level = _level()
+      if level > 0:
+        if _coeff() < 0:
+          level = -1 * level
+        level = min(level, 2063)  # cap for CAVLC
+        level = Quantize.rshift_rnd_sf((level * _iscale()) << qp_per, 4)
+        _level[0] = level
+      else:
+        _level[0] = 0

@@ -45,7 +45,7 @@ class RBits[N:int]:
       new_l0 |= (b << UInt[N](N-i-1))    
     self.l0_buffer = new_l0
 
-  def do_iter(self):
+  def do_iter(self) -> Generator[UInt[N]]:
     for i in range(len(self)):
       yield (self.l0_buffer >> UInt[N](N-i-1)) & UInt[N](1)
 
@@ -171,12 +171,12 @@ class Bits[N: int]:
 
   def pack[T:int](self, val: RBits[T]):
     for v in val.do_iter():
-      self.pack(v)
+      self.pack(v, 1)
     return self
 
   def pack[T:int](self, val: Bits[T]):
     for v in val.do_iter():
-      self.pack(v)
+      self.pack(v, 1)
     return self
 
   # see if we need to move bits from l0_buffer to l1_buffer
