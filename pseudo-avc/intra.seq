@@ -12,6 +12,15 @@ from quantize import *
 
 class IntraPred:
 
+  def try_mode(data, recons, cur_best_cost, cur_best_mode, cur_best_pred, mode_id, mode_func):
+    pred = data.shallow_cast[int]()
+    mode_func(pred, recons[pred])
+    cost = Cost.sad(data, pred)
+    if cost < cur_best_cost:
+      return cost, mode_id, Optional(pred)
+    else:
+      return cur_best_cost, cur_best_mode, cur_best_pred
+
   # Availability means: data exists and has the same slice
 
   def left_available(blk, blk_info):
@@ -226,91 +235,49 @@ class IntraPred:
       local_best_pred = None
       local_best_mode = UNKNOWN_MODE
       if left:
-        pred = y_4x4.shallow_cast[int]()
-        IntraPred.horizontal_4x4(pred, local_Y_rmb[y_4x4])
-        cost = Cost.sad(y_4x4, pred)
-        if cost < best_costs[idx]:
-          best_costs[idx] = cost
-          local_best_pred = pred
-          local_best_mode = HORIZ_4x4
-        pred = y_4x4.shallow_cast[int]()
-        IntraPred.horizontal_up_4x4(pred, local_Y_rmb[y_4x4])
-        cost = Cost.sad(y_4x4, pred)
-        if cost < best_costs[idx]:
-          best_costs[idx] = cost
-          local_best_pred = pred
-          local_best_mode = HORIZ_UP_4x4
+        best_costs[idx],local_best_mode,local_best_pred = \
+          IntraPred.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             HORIZ_4x4, IntraPred.horizontal_4x4)
+        best_costs[idx],local_best_mode,local_best_pred = \
+          IntraPred.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             HORIZ_UP_4x4, IntraPred.horizontal_up_4x4)
       if up:
-        pred = y_4x4.shallow_cast[int]()
-        IntraPred.vertical_4x4(pred, local_Y_rmb[y_4x4])
-        cost = Cost.sad(y_4x4, pred)
-        if cost < best_costs[idx]:
-          best_costs[idx] = cost
-          local_best_pred = pred
-          local_best_mode = VERT_4x4
+        best_costs[idx],local_best_mode,local_best_pred = \
+          IntraPred.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             VERT_4x4, IntraPred.vertical_4x4)
       if up and up_right:
-        pred = y_4x4.shallow_cast[int]()
-        IntraPred.diag_down_left_4x4(pred, local_Y_rmb[y_4x4])
-        cost = Cost.sad(y_4x4, pred)
-        if cost < best_costs[idx]:
-          best_costs[idx] = cost
-          local_best_pred = pred
-          local_best_mode = DIAG_DOWN_LEFT_4x4
-        pred = y_4x4.shallow_cast[int]()
-        IntraPred.vertical_left_4x4(pred, local_Y_rmb[y_4x4])
-        cost = Cost.sad(y_4x4, pred)
-        if cost < best_costs[idx]:
-          best_costs[idx] = cost
-          local_best_pred = pred
-          local_best_mode = VERT_LEFT_4x4
+        best_costs[idx], local_best_mode, local_best_pred = \
+          IntraPred.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             DIAG_DOWN_LEFT_4x4, IntraPred.diag_down_left_4x4)
+        best_costs[idx],local_best_mode,local_best_pred = \
+          IntraPred.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             VERT_LEFT_4x4, IntraPred.vertical_left_4x4)
       if up and left and up_left:
         pred = y_4x4.shallow_cast[int]()
-        IntraPred.diag_down_right_4x4(pred, local_Y_rmb[y_4x4])
-        cost = Cost.sad(y_4x4, pred)
-        if cost < best_costs[idx]:
-          best_costs[idx] = cost
-          local_best_pred = pred
-          local_best_mode = DIAG_DOWN_RIGHT_4x4
-        pred = y_4x4.shallow_cast[int]()
-        IntraPred.vertical_right_4x4(pred, local_Y_rmb[y_4x4])
-        cost = Cost.sad(y_4x4, pred)
-        if cost < best_costs[idx]:
-          best_costs[idx] = cost
-          local_best_pred = pred
-          local_best_mode = VERT_RIGHT_4x4
-        pred = y_4x4.shallow_cast[int]()
-        IntraPred.horizontal_down_4x4(pred, local_Y_rmb[y_4x4])
-        cost = Cost.sad(y_4x4, pred)
-        if cost < best_costs[idx]:
-          best_costs[idx] = cost
-          local_best_pred = pred
-          local_best_mode = HORIZ_DOWN_4x4
+        best_costs[idx],local_best_mode,local_best_pred = \
+          IntraPred.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             DIAG_DOWN_RIGHT_4x4, IntraPred.diag_down_right_4x4)
+        best_costs[idx],local_best_mode,local_best_pred = \
+          IntraPred.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             VERT_RIGHT_4x4, IntraPred.vertical_right_4x4)
+        best_costs[idx],local_best_mode,local_best_pred = \
+          IntraPred.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             HORIZ_DOWN_4x4, IntraPred.horizontal_down_4x4)
       # now try one of the DC modes (can only use one)
       if up and left:
-        pred = y_4x4.shallow_cast[int]()
-        IntraPred.DC_a_4x4(pred, local_Y_rmb[y_4x4])
-        cost = Cost.sad(y_4x4, pred)
-        if cost < best_costs[idx]:
-          best_costs[idx] = cost
-          local_best_pred = pred
-          local_best_mode = DC_4x4
+        best_costs[idx],local_best_mode,local_best_pred = \
+          IntraPred.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             DC_4x4, IntraPred.DC_a_4x4)
       elif left:
-        pred = y_4x4.shallow_cast[int]()
-        IntraPred.DC_b_4x4(pred, local_Y_rmb[y_4x4])
-        cost = Cost.sad(y_4x4, pred)
-        if cost < best_costs[idx]:
-          best_costs[idx] = cost
-          local_best_pred = pred
-          local_best_mode = DC_4x4
+        best_costs[idx],local_best_mode,local_best_pred = \
+          IntraPred.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             DC_4x4, IntraPred.DC_b_4x4)
       elif up:
-        pred = y_4x4.shallow_cast[int]()
-        IntraPred.DC_c_4x4(pred, local_Y_rmb[y_4x4])
-        cost = Cost.sad(y_4x4, pred)
-        if cost < best_costs[idx]:
-          best_costs[idx] = cost
-          local_best_pred = pred
-          local_best_mode = DC_4x4
+        best_costs[idx],local_best_mode,local_best_pred = \
+          IntraPred.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             DC_4x4, IntraPred.DC_c_4x4)
       else:
+        # This one is different b/c the mode function takes a different argument
         pred = y_4x4.shallow_cast[int]()
         IntraPred.DC_d_4x4(pred, cfg.bit_depth)
         cost = Cost.sad(y_4x4, pred)
