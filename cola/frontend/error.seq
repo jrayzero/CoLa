@@ -11,6 +11,20 @@ class ColaError:
     def message(self):
         return self._hdr.msg
 
+class ConfigError:
+    _hdr: ExcHeader
+
+    def __init__(self):
+        self._hdr = ('ConfigError', '', '', '', 0, 0)
+
+    def __init__(self, message: str):
+        self._hdr = ('ConfigError', message, '', '', 0, 0)
+
+    @property
+    def message(self):
+        return self._hdr.msg
+
+
 class ColaNotImplemented:
     _hdr: ExcHeader
 
