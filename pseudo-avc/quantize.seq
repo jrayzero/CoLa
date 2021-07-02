@@ -106,19 +106,19 @@ class Quantize:
       scaled_coeff = abs(coeff) * _scale()
       level = scaled_coeff + cfg.offset_comp[QP//6]
       level >>= q_bits
+      if coeff < 0:
+        level = -1 * level
       # here's where there'd be extra stuff from JM. But you want to encode level at this point because it is smaller.
       # otherwise if you do the rest of the JM stuff and then encode that, you get numbers that are like 200x bigger.
       _q[0] = level
 
-  def dequantize_4x4_JM_normal(quant, coeffs, cfg):
+  def dequantize_4x4_JM_normal(quant, cfg):
     QP = cfg.qp
     qp_per = cfg.qp_per_matrix[QP]
     # some of this may actually be unnecessary, but I just want to match some output from JM
-    for _level,_coeff,_iscale in scan(quant, coeffs, cfg.inv_scale_quant_matrix[QP%6,:,:]):
+    for _level,_iscale in scan(quant, cfg.inv_scale_quant_matrix[QP%6,:,:]):
       level = _level()
-      if level > 0:
-        if _coeff() < 0:
-          level = -1 * level
+      if level != 0:
         level = min(level, 2063)  # cap for CAVLC
         level = Quantize.rshift_rnd_sf((level * _iscale()) << qp_per, 4)
         _level[0] = level

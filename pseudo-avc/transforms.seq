@@ -172,7 +172,8 @@ class DCT:
   def dct4x4(inp, out):
     if staticlen(inp.dims()) != 2:
       raise ColaError()
-    # horizontal    
+    # horizontal
+    out[:,:] = 0
     for r in range(4):
       in_row = inp[r,:]
       out_row = out[r,:]

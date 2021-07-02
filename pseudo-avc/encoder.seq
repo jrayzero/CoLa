@@ -58,7 +58,7 @@ assert not cfg.skip_16x16_intra or not cfg.skip_4x4_intra
 total_psnr = 0.0
 n_bits_mode_signal = 0
 n_bits_coeff = 0
-
+all_bits = Bits[64]()
 # main loop
 for f in range(cfg.nframes):
   if cfg.color_space == YUV:

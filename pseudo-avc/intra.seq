@@ -12,43 +12,54 @@ from quantize import *
 
 class IntraPred:
 
-  def try_mode(data, recons, cur_best_cost, cur_best_mode, cur_best_pred, mode_id, mode_func):
+  def try_mode(data, recons, cur_best_cost, cur_best_mode, cur_best_pred, mode_id, mode_func, *args):
     pred = data.shallow_cast[int]()
-    mode_func(pred, recons[pred])
+    mode_func(pred, recons[pred], *args)
     cost = Cost.sad(data, pred)
     if cost < cur_best_cost:
       return cost, mode_id, Optional(pred)
     else:
       return cur_best_cost, cur_best_mode, cur_best_pred
 
-  # Availability means: data exists and has the same slice
+  # Availability means: data exists (wrt bounds and traversal order within a partition) and has the same slice. The traversal order
+  # part is currently satisfied by checking the mode id in mode_tree. If it is -1, that block hasn't been predicted
+  # yet. But this isn't very generalizable able (see todo)
+  # TODO need to be able to check existence wrt a traversal order within a partition
 
-  def left_available(blk, blk_info):
-    if blk[0,-1].exists():
+  def left_available(blk, blk_info, mode_tree: Optional[FlagTree[Tuple[ColaSlice,ColaSlice],BlkInfo]]=None):
+    available_wrt_part_order = not mode_tree or (
+          mode_tree.exists(blk[0, -1]) and mode_tree[blk[0, -1]].mode != UNKNOWN_MODE)
+    if blk[0,-1].exists() and available_wrt_part_order:
       my_sid = blk_info[blk[0,0]].slice_id
       left_sid = blk_info[blk[0,-1]].slice_id
       if my_sid == left_sid:
         return True
     return False
 
-  def up_available(blk, blk_info):
-    if blk[-1,0].exists():
+  def up_available(blk, blk_info, mode_tree: Optional[FlagTree[Tuple[ColaSlice,ColaSlice],BlkInfo]]=None):
+    available_wrt_part_order = not mode_tree or (
+          mode_tree.exists(blk[-1,0]) and mode_tree[blk[-1,0]].mode != UNKNOWN_MODE)
+    if blk[-1,0].exists() and available_wrt_part_order:
       my_sid = blk_info[blk[0,0]].slice_id
       up_sid = blk_info[blk[-1,0]].slice_id
       if my_sid == up_sid:
         return True
     return False
 
-  def up_left_available(blk, blk_info):
-    if blk[-1,-1].exists():
+  def up_left_available(blk, blk_info, mode_tree: Optional[FlagTree[Tuple[ColaSlice,ColaSlice],BlkInfo]]=None):
+    available_wrt_part_order = not mode_tree or (
+          mode_tree.exists(blk[-1,-1]) and mode_tree[blk[-1,-1]].mode != UNKNOWN_MODE)
+    if blk[-1,-1].exists() and available_wrt_part_order:
       my_sid = blk_info[blk[0,0]].slice_id
       up_left_sid = blk_info[blk[-1,-1]].slice_id
       if my_sid == up_left_sid:
         return True
     return False
       
-  def up_right_available(blk, blk_info):
-    if blk[-1,blk.dims()[1]+1].exists():
+  def up_right_available(blk, blk_info, mode_tree: Optional[FlagTree[Tuple[ColaSlice,ColaSlice],BlkInfo]]=None):
+    available_wrt_part_order = not mode_tree or (
+          mode_tree.exists(blk[-1,blk.dims()[1]+1]) and mode_tree[blk[-1,blk.dims()[1]+1]].mode != UNKNOWN_MODE)
+    if blk[-1,blk.dims()[1]+1].exists() and available_wrt_part_order:
       my_sid = blk_info[blk[0,0]].slice_id
       up_right_sid = blk_info[blk[-1,blk.dims()[1]+1]].slice_id
       if my_sid == up_right_sid:
@@ -67,58 +78,24 @@ class IntraPred:
     best_mode = UNKNOWN_MODE
     local_Y_rmb = Block(Y_rmb)
     if left and not cfg.skip_16x16_horiz:
-      # need to store ints, not bytes
-      pred = Y_mb.shallow_cast[int]()
-      IntraPred.horizontal_16x16(pred, Y_rmb)
-      best_cost = Cost.sad(Y_mb, pred)
-      best_pred = pred
-      best_mode = HORIZ_16x16
+      best_cost,best_mode,best_pred = IntraPred.try_mode(Y_mb, local_Y_rmb, best_cost, best_mode, best_pred,
+                                                         HORIZ_16x16, IntraPred.horizontal_16x16)
     if up and not cfg.skip_16x16_vert:
-      # need to store ints, not bytes
-      pred = Y_mb.shallow_cast[int]()
-      IntraPred.vertical_16x16(pred, Y_rmb)
-      cost = Cost.sad(Y_mb, pred)
-      if cost < best_cost:
-        best_cost = cost
-        best_pred = pred
-        best_mode = VERT_16x16
+      best_cost,best_mode,best_pred = IntraPred.try_mode(Y_mb, local_Y_rmb, best_cost, best_mode, best_pred,
+                                                         VERT_16x16, IntraPred.vertical_16x16)
     if up and left and not cfg.skip_16x16_planar:
-      # need to store ints, not bytes
-      pred = Y_mb.shallow_cast[int]()
-      IntraPred.planar_16x16(pred, Y_rmb, cfg.bit_depth)
-      cost = Cost.sad(Y_mb, pred)
-      if cost < best_cost:
-        best_cost = cost
-        best_pred = pred
-        best_mode = PLANAR_16x16
+      best_cost,best_mode,best_pred = IntraPred.try_mode(Y_mb, local_Y_rmb, best_cost, best_mode, best_pred,
+                                                         PLANAR_16x16, IntraPred.planar_16x16, cfg.bit_depth)
     # now try the DC modes (only try one of these)
     if up and left:
-      # need to store ints, not bytes
-      pred = Y_mb.shallow_cast[int]()
-      IntraPred.DC_a_16x16(pred, Y_rmb)
-      cost = Cost.sad(Y_mb, pred)
-      if cost < best_cost:
-        best_cost = cost
-        best_pred = pred
-        best_mode = DC_16x16
+      best_cost,best_mode,best_pred = IntraPred.try_mode(Y_mb, local_Y_rmb, best_cost, best_mode, best_pred,
+                                                         DC_16x16, IntraPred.DC_a_16x16)
     elif left:
-      # need to store ints, not bytes
-      pred = Y_mb.shallow_cast[int]()
-      IntraPred.DC_b_16x16(pred, Y_rmb)
-      cost = Cost.sad(Y_mb, pred)
-      if cost < best_cost:
-        best_cost = cost
-        best_pred = pred
-        best_mode = DC_16x16
+      best_cost,best_mode,best_pred = IntraPred.try_mode(Y_mb, local_Y_rmb, best_cost, best_mode, best_pred,
+                                                         DC_16x16, IntraPred.DC_b_16x16)
     elif up:
-      # need to store ints, not bytes
-      pred = Y_mb.shallow_cast[int]()
-      IntraPred.DC_c_16x16(pred, Y_rmb)
-      cost = Cost.sad(Y_mb, pred)
-      if cost < best_cost:
-        best_cost = cost
-        best_pred = pred
-        best_mode = DC_16x16
+      best_cost,best_mode,best_pred = IntraPred.try_mode(Y_mb, local_Y_rmb, best_cost, best_mode, best_pred,
+                                                         DC_16x16, IntraPred.DC_c_16x16)
     else:
       # need to store ints, not bytes
       pred = Y_mb.shallow_cast[int]()
@@ -211,7 +188,8 @@ class IntraPred:
     mode_tree = Y_4x4.to_flagtree[BlkInfo]()
     quant = Y_mb.shallow_cast[int]() # holds output of quantization
     idx = 0
-    # setup the local reconstruction
+    # setup the local reconstruction (not all of this data will necessarily be valid, but we make a big enough block
+    # pretending that it all is)
     local_Y_recons = Block(Y_rmb[-1:,-1:20])
     local_Y_recons[:,:] = 0
     # check existence of Y_rmb instead of local_Y_recons since local_Y_recons has its own buffer so we would always be out
@@ -228,10 +206,10 @@ class IntraPred:
     # re-pull out the appropriate location
     local_Y_rmb = local_Y_recons[Y_rmb]
     for y_4x4 in scan(Y_4x4):
-      left, up, up_left, up_right = IntraPred.left_available(y_4x4, blk_info), \
-                                    IntraPred.up_available(y_4x4, blk_info), \
-                                    IntraPred.up_left_available(y_4x4, blk_info), \
-                                    IntraPred.up_right_available(y_4x4, blk_info)
+      left, up, up_left, up_right = IntraPred.left_available(y_4x4, blk_info, mode_tree), \
+                                    IntraPred.up_available(y_4x4, blk_info, mode_tree), \
+                                    IntraPred.up_left_available(y_4x4, blk_info, mode_tree), \
+                                    IntraPred.up_right_available(y_4x4, blk_info, mode_tree)
       local_best_pred = None
       local_best_mode = UNKNOWN_MODE
       if left:
@@ -301,7 +279,7 @@ class IntraPred:
       Quantize.quantize_4x4_JM_normal(coeffs, quant[coeffs], cfg)
       # reconstruction
       local_Y_rmb[coeffs] = quant[coeffs]
-      Quantize.dequantize_4x4_JM_normal(local_Y_rmb[coeffs], coeffs, cfg)
+      Quantize.dequantize_4x4_JM_normal(local_Y_rmb[coeffs], cfg)
       DCT.idct4x4(local_Y_rmb[coeffs], local_Y_rmb[coeffs])
       # 6=DQ_BITS
       # TODO elementwise min so don't need loop for this
@@ -403,7 +381,7 @@ class IntraPred:
         elif zHU == 1 or zHU == 3:
           pred[y,x] = (int(ref_colocated(y+(x>>1),-1)) + 2*int(ref_colocated(y+(x>>1)+1,-1)) + int(ref_colocated(y+(x>>1)+2,-1)) + 2) >> 2
         else:
-          pred[y,x] = (int(ref_colocated(y+(x>>1),-1)) + int(ref_colocated(y+(x>>1)+1,-1)) + 1) >> 2
+          pred[y,x] = (int(ref_colocated(y+(x>>1),-1)) + int(ref_colocated(y+(x>>1)+1,-1)) + 1) >> 1
 
 #class H264IntraChroma:
 #
