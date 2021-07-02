@@ -8,7 +8,6 @@ from constants import *
 class Config:
 
   input_file: str
-  output_file: str
   nframes: int
   lframe_width_in_pixels: int
   lframe_height_in_pixels: int
@@ -20,12 +19,20 @@ class Config:
   bit_depth: int
   qp: int
   skip_4x4_intra: bool
+  skip_4x4_vert: bool
+  skip_4x4_horiz: bool
+  skip_4x4_ddl: bool
+  skip_4x4_ddr: bool
+  skip_4x4_vert_right: bool
+  skip_4x4_horiz_down: bool
+  skip_4x4_vert_left: bool
+  skip_4x4_horiz_up: bool
   skip_16x16_intra: bool
   skip_16x16_horiz: bool
   skip_16x16_vert: bool
   skip_16x16_planar: bool
   trace: bool
-  # mimicking JM
+  # mimicking JM and it's quantization that I don't totally understand...but I can match it!
   scale_quant_matrix: Block[int, Tuple[int, int, int], Tuple[ColaSlice, ColaSlice, ColaSlice]]
   inv_scale_quant_matrix: Block[int, Tuple[int, int, int], Tuple[ColaSlice, ColaSlice, ColaSlice]]
   offset_comp: list[int]
@@ -42,6 +49,15 @@ class Config:
     self.bit_depth = 8
     self.qp = 10
     self.skip_4x4_intra = False
+    self.skip_4x4_intra = False
+    self.skip_4x4_vert = False
+    self.skip_4x4_horiz = False
+    self.skip_4x4_ddl = False
+    self.skip_4x4_ddr = False
+    self.skip_4x4_vert_right = False
+    self.skip_4x4_horiz_down = False
+    self.skip_4x4_vert_left = False
+    self.skip_4x4_horiz_up = False
     self.skip_16x16_intra = False
     self.skip_16x16_horiz = False
     self.skip_16x16_vert = False
@@ -83,23 +99,19 @@ class Config:
       if self.input_file[0] == '\'' and self.input_file[-1] == '\'':
         self.input_file = self.input_file[1:-1]
     else:
-      raise ColaError()
-    if 'output_file' in params:
-      self.output_file = params['output_file']
-      if self.output_file[0] == '\'' and self.output_file[-1] == '\'':
-        self.output_file = self.output_file[1:-1]
-    else:
-      raise ColaError()
+      raise ConfigError()
     if 'nframes' in params:
       self.nframes = int(params['nframes'])
+      if self.nframes < 0:
+        raise ConfigError()
     else:
-      raise ColaError()
+      raise ConfigError()
     if 'input_sample' in params:
       val = params['input_sample'].lower()
       if val == 'sample_420':
         self.input_sample = SAMPLE_420
       else:
-        raise ColaError()
+        raise ConfigError()
     if 'frame_width_in_pixels' in params:
       val = params['frame_width_in_pixels'].lower()
       if val == 'qcif':
@@ -107,9 +119,9 @@ class Config:
         if self.input_sample == SAMPLE_420:
           self.cframe_width_in_pixels = 88
       else:
-        raise ColaError()
+        raise ConfigError()
     else:
-      raise ColaError()
+      raise ConfigError()
     if 'frame_height_in_pixels' in params:
       val = params['frame_height_in_pixels'].lower()
       if val == 'qcif':
@@ -117,15 +129,31 @@ class Config:
         if self.input_sample == SAMPLE_420:
           self.cframe_height_in_pixels = 72
       else:
-        raise ColaError()
+        raise ConfigError()
     else:
-      raise ColaError()
+      raise ConfigError()
     if 'macroblocks_per_slice' in params:
       self.macroblocks_per_slice = int(params['macroblocks_per_slice'])
     if 'qp' in params:
       self.qp = int(params['qp'])
     if 'skip_4x4_intra' in params:
       self.skip_4x4_intra = params['skip_4x4_intra'] == 'true'
+    if 'skip_4x4_vert' in params:
+      self.skip_4x4_vert = params['skip_4x4_vert'] == 'true'
+    if 'skip_4x4_horiz' in params:
+      self.skip_4x4_horiz = params['skip_4x4_horiz'] == 'true'
+    if 'skip_4x4_ddl' in params:
+      self.skip_4x4_ddl = params['skip_4x4_ddl'] == 'true'
+    if 'skip_4x4_ddr' in params:
+      self.skip_4x4_ddr = params['skip_4x4_ddr'] == 'true'
+    if 'skip_4x4_vert_right' in params:
+      self.skip_4x4_vert_right = params['skip_4x4_vert_right'] == 'true'
+    if 'skip_4x4_horiz_down' in params:
+      self.skip_4x4_horiz_down = params['skip_4x4_horiz_down'] == 'true'
+    if 'skip_4x4_vert_left' in params:
+      self.skip_4x4_vert_left = params['skip_4x4_vert_left'] == 'true'
+    if 'skip_4x4_horiz_up' in params:
+      self.skip_4x4_horiz_up = params['skip_4x4_horiz_up'] == 'true'
     if 'skip_16x16_intra' in params:
       self.skip_16x16_intra = params['skip_16x16_intra'] == 'true'
     if 'skip_16x16_horiz' in params:
@@ -152,6 +180,15 @@ class Config:
     s += 'bit_depth: ' + str(self.bit_depth) + '\n'
     s += 'qp: ' + str(self.qp) + '\n'
     s += 'trace: ' + str(self.trace) + '\n'
+    s += 'skip_4x4_intra: ' + str(self.skip_4x4_intra) + '\n'
+    s += 'skip_4x4_vert: ' + str(self.skip_4x4_vert) + '\n'
+    s += 'skip_4x4_horiz: ' + str(self.skip_4x4_horiz) + '\n'
+    s += 'skip_4x4_ddl: ' + str(self.skip_4x4_ddl) + '\n'
+    s += 'skip_4x4_ddr: ' + str(self.skip_4x4_ddr) + '\n'
+    s += 'skip_4x4_vert_right: ' + str(self.skip_4x4_vert_right) + '\n'
+    s += 'skip_4x4_horiz_down: ' + str(self.skip_4x4_horiz_down) + '\n'
+    s += 'skip_4x4_vert_left: ' + str(self.skip_4x4_vert_left) + '\n'
+    s += 'skip_4x4_horiz_up: ' + str(self.skip_4x4_horiz_up) + '\n'
     s += 'skip_16x16_intra: ' + str(self.skip_16x16_intra) + '\n'
     s += 'skip_16x16_horiz: ' + str(self.skip_16x16_horiz) + '\n'
     s += 'skip_16x16_vert: ' + str(self.skip_16x16_vert) + '\n'

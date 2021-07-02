@@ -6,7 +6,8 @@ from ..cola.frontend.flagtree import *
 from basic_io import *
 from constants import *
 from partition import *
-from intra import *
+from intra4x4 import *
+from intra16x16 import *
 from config import *
 from structures import *
 from trav import *
@@ -18,9 +19,6 @@ from cavlc import *
 # TODO NOTE: deblocking used only for inter-prediction (but you would still filter the intra-predicted mbs).
 #  This means we need to store both filtered and unfiltered references
 
-# NOTE: I do some encoding so I count the bits for coefficients and signalling the mode. That's where the majority
-# of the bit cost comes from
-
 import sys
 
 if len(sys.argv) < 2:
@@ -30,7 +28,6 @@ config_file = sys.argv[1]
 cfg = Config(config_file)
 
 ifd = open(cfg.input_file, 'rb')
-ofd = open(cfg.output_file, 'wb')
 
 lframe_w,lframe_h = cfg.lframe_width_in_pixels, cfg.lframe_height_in_pixels
 cframe_w,cframe_h = cfg.cframe_width_in_pixels, cfg.cframe_height_in_pixels
@@ -54,11 +51,10 @@ Cr_recons_filt = Cr_frame.shallow_cast[int]()
 
 assert not cfg.skip_16x16_intra or not cfg.skip_4x4_intra
 
-# some holders for stats
+# some stats
 total_psnr = 0.0
-n_bits_mode_signal = 0
-n_bits_coeff = 0
 all_bits = Bits[64]()
+
 # main loop
 for f in range(cfg.nframes):
   if cfg.color_space == YUV:
@@ -70,60 +66,56 @@ for f in range(cfg.nframes):
   Y_rmbs = Partition.grid(Y_recons, 16)
   Cb_rmbs = Partition.grid(Cb_recons, 8)
   Cr_rmbs = Partition.grid(Cr_recons, 8)
-  # don't pass in BlkInfo() because it will set all of the nodes to the same Blk, so then they are all just pointers to one another
-  # TODO yikes this notation
+  # don't pass in BlkInfo() because it will set all of the nodes to the same Blk, so then they are all just pointers to one another.
+  # just keep it as a generic type instead so it gets created for all of the nodes
   blk_info = Y_mbs.to_flagtree[BlkInfo]()
   cur_slice_id = 0
   mbs_in_slice = 0
   mb_idx = 0
-  # this tree represents the macroblocks as their 4x4 versions, which is the granularity they are encoded at
   for Y_mb,Y_rmb in scan(Y_mbs, Y_rmbs):
     blk_info[Y_mb].slice_id = cur_slice_id
     # Intra prediction
     blk_info[Y_mb].is_intra_pred = True
     if not cfg.skip_16x16_intra and not cfg.skip_4x4_intra:
+      raise NotImplementedError('Not supported currently')
       # do both
-      cost_16x16,mode_16x16,DCs_16x16,quant_16x16,local_recons_16x16_unfilt = IntraPred.try_16x16(Y_mb, Y_rmb, blk_info, cfg)
+      cost_16x16,mode_16x16,DCs_16x16,quant_16x16,local_recons_16x16_unfilt = IntraPred16x16.try_low(Y_mb, Y_rmb, blk_info, cfg)
       # returns the full cost + full 16x16 pred (made of 4x4 blocks)
-      cost_4x4,mode_tree_4x4,quant_4x4,local_recons_4x4_unfilt = IntraPred.try_4x4(Y_mb, Y_rmb, blk_info, cfg)
+      cost_4x4,mode_tree_4x4,quant_4x4,local_recons_4x4_unfilt = IntraPred4x4.try_low(Y_mb, Y_rmb, blk_info, cfg)
       if cost_16x16 <= cost_4x4:
         blk_info[Y_mb].mode = mode_16x16
         blk_info[Y_mb].intra_pred_type = INTRA_16x16
         Y_recons[local_recons_16x16_unfilt] = local_recons_16x16_unfilt
         # TODO ENCODE QUANT
       else:
+        # returns the full cost + full 16x16 pred (made of 4x4 blocks)
         blk_info[Y_mb] = mode_tree_4x4
         Y_recons[local_recons_4x4_unfilt] = local_recons_4x4_unfilt
-        Q_4x4 = Partition.grid_quadtree(quant_4x4, 2)[0]
-        bits = Bits[64]()
-        for q_4x4 in scan(Q_4x4):
-          _,total_coeffs = CAVLC.encode(q_4x4, blk_info, bits)
+        # encode the quantized result so we can get a bit count. Doesn't do any syntax stuff, just pure cavlc
+        for q_4x4 in scan(Partition.grid_quadtree(quant_4x4, 2)[0]):
+          _, total_coeffs = CAVLC.encode(q_4x4, blk_info, all_bits)
           blk_info[q_4x4].total_coeffs = total_coeffs
-        n_bits_coeff += len(bits)
     elif not cfg.skip_16x16_intra:
-      cost_16x16, mode_16x16, DCs_16x16, quant_16x16, local_recons_16x16_unfilt = IntraPred.try_16x16(Y_mb, Y_rmb,
-                                                                                                     blk_info, cfg)
+      raise NotImplementedError('Not supported currently')
+      cost_16x16, mode_16x16, DCs_16x16, quant_16x16, local_recons_16x16_unfilt = IntraPred16x16.try_low(Y_mb, Y_rmb,
+                                                                                                         blk_info, cfg)
       blk_info[Y_mb].mode = mode_16x16
       blk_info[Y_mb].intra_pred_type = INTRA_16x16
       Y_recons[local_recons_16x16_unfilt] = local_recons_16x16_unfilt
       # TODO need DC also
       Q_16x16 = Partition.grid_quadtree(quant_16x16, 2)[0]
-      bits = Bits[64]()
       for q_16x16 in scan(Q_16x16):
-        _, total_coeffs = CAVLC.encode(q_16x16, blk_info, bits)
+        _, total_coeffs = CAVLC.encode(q_16x16, blk_info, all_bits)
         blk_info[q_16x16].total_coeffs = total_coeffs
-      n_bits_coeff += len(bits)
     elif not cfg.skip_4x4_intra:
       # returns the full cost + full 16x16 pred (made of 4x4 blocks)
-      cost_4x4, mode_tree_4x4, quant_4x4, local_recons_4x4_unfilt = IntraPred.try_4x4(Y_mb, Y_rmb, blk_info, cfg)
+      cost_4x4, mode_tree_4x4, quant_4x4, local_recons_4x4_unfilt = IntraPred4x4.try_low(Y_mb, Y_rmb, blk_info, cfg)
       blk_info[Y_mb] = mode_tree_4x4
       Y_recons[local_recons_4x4_unfilt] = local_recons_4x4_unfilt
-      Q_4x4 = Partition.grid_quadtree(quant_4x4, 2)[0]
-      bits = Bits[64]()
-      for q_4x4 in scan(Q_4x4):
-        _, total_coeffs = CAVLC.encode(q_4x4, blk_info, bits)
+      # encode the quantized result so we can get a bit count. Doesn't do any syntax stuff, just pure cavlc
+      for q_4x4 in scan(Partition.grid_quadtree(quant_4x4, 2)[0]):
+        _, total_coeffs = CAVLC.encode(q_4x4, blk_info, all_bits)
         blk_info[q_4x4].total_coeffs = total_coeffs
-      n_bits_coeff += len(bits)
     # update slice status
     mbs_in_slice += 1
     if cfg.macroblocks_per_slice != -1 and cfg.macroblocks_per_slice == mbs_in_slice:
@@ -131,15 +123,13 @@ for f in range(cfg.nframes):
       cur_slice_id += 1
     mb_idx += 1
   # compute some stats on this frame
-  # TODO use filtered reconstruction? Eh, probs doesn't matter. It ideally should just make my psnr better (i.e. higher)
+  # TODO use filtered reconstruction?
   psnr = Cost.PSNR(int(Y_frame), Y_recons, cfg.bit_depth)
   note('frame ' + str(f) + ' has psnr ' + str(psnr))
   total_psnr += psnr
 
-note('Avg nbits/frame ' + str(n_bits_coeff//cfg.nframes))
+note('Avg nbits/frame ' + str(len(all_bits)//cfg.nframes))
 avg_psnr = total_psnr / float(cfg.nframes)
 note('Y_psnr/frame ' + str(avg_psnr))
 
 ifd.close()
-ofd.flush()
-ofd.close()

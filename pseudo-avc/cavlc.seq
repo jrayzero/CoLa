@@ -211,8 +211,6 @@ class CAVLC:
     stop = len(nonzero_coeffs) - len(trailing_ones) #if len(trailing_ones) == 0 else -1 * len(trailing_ones)
     nonzero_coeffs = nonzero_coeffs[:stop]#-1*len(trailing_ones)]
     total_zeros = total_zeros - trailing_zeros
-
-
     # for the zero runs, we can skip the first and last
     # the last one is just the number of trailing zeros, which we don't care about
     # the first one is the run before the first non-zero, which doesn't get encoded anyway (because you 
