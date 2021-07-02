@@ -119,6 +119,30 @@ class FlagTree[C,F]:
       if not found:
         raise ColaError('obj does not have appropriate location in tree')
 
+  def exists[E2,T](self, obj: Block[E2,T,C]) -> bool:
+    return self.exists(View(obj))
+
+  def exists[E2,T](self, obj: View[E2,T,C]) -> bool:
+    """
+    Checks for leaf that completely encapsulates the region specified and returns true if it exists.
+    """
+    if not obj.base.fully_contained(self.value._cgrid_mapping):
+      return False
+    if len(self.children) == 0:
+      return True
+    else:
+      return self._exists_inner(obj)
+
+  def _exists_inner(self, obj) -> bool:
+    if len(self.children) == 0:
+      return True
+    else:
+      for child in self.children:
+        if obj.base.fully_contained(child.value._cgrid_mapping):
+          return child._exists_inner(obj)
+      # didn't find a node
+      return False
+
   def __getitem__[E2,T](self, obj: Block[E2,T,C]) -> F:
     return self[View(obj)]
 
