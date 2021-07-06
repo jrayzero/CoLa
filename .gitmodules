@@ -1,3 +1,4 @@
 [submodule "seq"]
 	path = seq
-	url = https://github.com/seq-lang/seq
+	url = git@github.com:seq-lang/seq
+	branch = develop
