@@ -1,3 +1,10 @@
+from slice import *
+from error import *
+from tuple_opts import *
+
+import random
+import string
+
 # N = num. dimensions
 # T = Tuple of N ints
 class CoordGrid:

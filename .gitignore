@@ -16,3 +16,6 @@ pseudo-avc/encoder
 pseudo-avc/out*
 pseudo-avc/encoder.dSYM
 pseudo-avc/*txt
+pseudo-avc/gmon.out
+pseudo-avc/*.o
+pseudo-avc/a.out

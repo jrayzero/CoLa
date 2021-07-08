@@ -12,6 +12,8 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <unistd.h>
+#include <sys/wait.h>
 
 namespace {
 void versMsg(llvm::raw_ostream &out) {
@@ -47,11 +49,11 @@ std::string makeOutputFilename(const std::string &filename,
   return filename + extension;
 }
 
-enum BuildKind { LLVM, Bitcode, Object, Executable, Detect };
+enum BuildKind { LLVM, Bitcode, Object, Executable, Detect, Gprof };
 enum OptMode { Debug, Release };
 struct ProcessResult {
-  std::unique_ptr<seq::ir::LLVMVisitor> visitor;
-  std::string input;
+    std::unique_ptr<seq::ir::LLVMVisitor> visitor;
+    std::string input;
 };
 } // namespace
 
@@ -119,9 +121,6 @@ ProcessResult processSource(const std::vector<const char *> &args) {
   seq::ir::transform::PassManager pm(/*addStandardPasses=*/!isDebug, disabledOptsVec);
   seq::PluginManager plm(&pm, isDebug);
 
-  // load Seq
-//  seq::Seq seqDSL;
-//  plm.load(&seqDSL);
   // load Cola
   cola::Cola colaDSL;
   plm.load(&colaDSL);
@@ -185,6 +184,77 @@ int runMode(const std::vector<const char *> &args) {
   return EXIT_SUCCESS;
 }
 
+// copied from llvisitor.cpp. Can't easily link since it's not exposed in the header and would be mangled.
+void addEnvVarPathsToLinkerArgs(std::vector<std::string> &args,
+                                const std::string &var) {
+  if (const char *path = getenv(var.c_str())) {
+    llvm::StringRef pathStr(path);
+    llvm::SmallVector<llvm::StringRef, 16> split;
+    pathStr.split(split, ":");
+
+    for (const auto &subPath : split) {
+      args.push_back(("-L" + subPath).str());
+    }
+  }
+}
+
+void executeCommand(const std::vector<std::string> &args) {
+  std::vector<const char *> cArgs;
+  for (auto &arg : args) {
+    cArgs.push_back(arg.c_str());
+  }
+  cArgs.push_back(nullptr);
+
+  if (fork() == 0) {
+    int status = execvp(cArgs[0], (char *const *)&cArgs[0]);
+    exit(status);
+  } else {
+    int status;
+    if (wait(&status) < 0) {
+        seq::compilationError("process for '" + args[0] + "' encountered an error in wait");
+    }
+
+    if (WEXITSTATUS(status) != 0) {
+        seq::compilationError("process for '" + args[0] + "' exited with status " +
+                       std::to_string(WEXITSTATUS(status)));
+    }
+  }
+}
+
+// use instead of LLVMVisitor::writeToExecutable because I want to add additional args
+void writeToExecutable(std::unique_ptr<seq::ir::LLVMVisitor> &llvm_obj, const std::string &filename,
+                       const std::vector<std::string> &libs,
+                       const std::vector<std::string> &extra_flags = {} /*should contain properly formatted flags*/) {
+  const std::string objFile = filename + ".o";
+  llvm_obj->writeToObjectFile(objFile);
+
+  std::vector<std::string> command = {"clang"};
+  addEnvVarPathsToLinkerArgs(command, "LIBRARY_PATH");
+  addEnvVarPathsToLinkerArgs(command, "LD_LIBRARY_PATH");
+  addEnvVarPathsToLinkerArgs(command, "DYLD_LIBRARY_PATH");
+  addEnvVarPathsToLinkerArgs(command, "SEQ_LIBRARY_PATH");
+  addEnvVarPathsToLinkerArgs(command, "CODON_BUILD");
+  for (const auto &flag : extra_flags) {
+      command.push_back(flag);
+  }
+  for (const auto &lib : libs) {
+    command.push_back("-l" + lib);
+  }
+  std::vector<std::string> extraArgs = {"-lseqrt", "-lomp", "-lpthread", "-ldl",
+                                        "-lz",     "-lm",   "-lc",       "-o",
+                                        filename,  objFile};
+  for (const auto &arg : extraArgs) {
+    command.push_back(arg);
+  }
+  executeCommand(command);
+
+#if __APPLE__
+  if (db.debug) {
+    llvm_obj->executeCommand({"dsymutil", filename});
+  }
+#endif    
+}
+
 int buildMode(const std::vector<const char *> &args) {
   llvm::cl::list<std::string> libs(
       "l", llvm::cl::desc("Link the specified library (only for executables)"));
@@ -194,6 +264,7 @@ int buildMode(const std::vector<const char *> &args) {
                        clEnumValN(Bitcode, "bc", "Generate LLVM bitcode"),
                        clEnumValN(Object, "obj", "Generate native object file"),
                        clEnumValN(Executable, "exe", "Generate executable"),
+                       clEnumValN(Gprof, "gprof", "Generate executable with gprof symbols."),
                        clEnumValN(Detect, "detect",
                                   "Detect output type based on output file extension")),
       llvm::cl::init(Detect));
@@ -223,6 +294,7 @@ int buildMode(const std::vector<const char *> &args) {
     break;
   case BuildKind::Executable:
   case BuildKind::Detect:
+  case BuildKind::Gprof:
     extension = "";
     break;
   default:
@@ -241,8 +313,11 @@ int buildMode(const std::vector<const char *> &args) {
     result.visitor->writeToObjectFile(filename);
     break;
   case BuildKind::Executable:
-    result.visitor->writeToExecutable(filename, libsVec);
+    writeToExecutable(result.visitor, filename, libsVec);
     break;
+  case BuildKind::Gprof:
+      writeToExecutable(result.visitor, filename, libsVec, {"-pg"});
+    break;    
   case BuildKind::Detect:
     result.visitor->compile(filename, libsVec);
     break;

@@ -102,6 +102,9 @@ class Block[E,T,C]:
   def fully_contained[E2](self, other: View[E2,T,C]) -> bool:
     return self.base.fully_contained(other.base)
 
+  def fully_contained(self, other_mapping: C) -> bool:
+    return self.base.fully_contained(other_mapping)
+
   def __call__(self) -> E:
     return self.base.__call__()
 
@@ -288,6 +291,9 @@ class View[E,T,C]:
 
   def fully_contained[E2](self, other: View[E2,T,C]) -> bool:
     return self.base.fully_contained(other.base)
+
+  def fully_contained(self, other_mapping: C) -> bool:
+    return self.base.fully_contained(other_mapping)
 
   def __setitem__[E2](self, idx: Block[E2,T,C], item: E):
     self.base[idx.base] = item

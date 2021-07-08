@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.9)
 project(CoLa)
+set(CMAKE_VERBOSE_MAKEFILE TRUE)
 
 # Note: Codon <-> Seq
 
@@ -42,16 +43,8 @@ set (COLA_DSL_HDR cola/compiler/cola.h)
 add_library (cola SHARED ${COLA_DSL_CPP} ${COLA_DSL_HDR})
 target_include_directories(cola PUBLIC ${CODON_TOP} ${CODON_TOP}/compiler)
 
-# Get LLVM through Codon dependencies
-#find_package(LLVM REQUIRED CONFIG PATHS ${CODON_DEP} NO_DEFAULT_PATH)
-#message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
-#message(STATUS "Using LLVMConfig.cmake in: ${LLVM_INCLUDE_DIRS}")
-#target_include_directories(cola PUBLIC ${LLVM_INCLUDE_DIRS})
-#add_definitions(${LLVM_DEFINITIONS})
-
-
 # Cola command-line compiler
 find_library(SEQ seq REQUIRED PATHS ${CODON_BUILD} NO_DEFAULT_PATH)
 add_executable(colac cola/runtime/main.cpp)
-target_include_directories(cola PUBLIC ${CODON_DEP}/include)
+target_include_directories(colac PUBLIC ${CODON_DEP}/include)
 target_link_libraries(colac ${STATIC_LIBCPP} cola ${SEQ} Threads::Threads)
