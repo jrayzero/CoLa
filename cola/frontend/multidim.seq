@@ -161,6 +161,12 @@ class Multidim[E,T,C]:
     Return the dimensions of self
     """
     return self._dims
+
+  def dims(self, idx: int) -> int:
+    """
+    Return dimension idx of self
+    """
+    return self._dims[idx]
   
   def cgrid_mapping(self) -> C:
     """
