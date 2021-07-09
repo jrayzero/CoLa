@@ -54,6 +54,10 @@ class Block[E,T,C]:
 
   def __init__(self, other: Multidim[E,T,C]):
     self.base = other
+
+  def __iter__(self):
+    for item in self.base:
+      yield View(item)
   
   def shallow_cast[E2](self) -> Block[E2,T,C]:
     """
@@ -63,6 +67,9 @@ class Block[E,T,C]:
 
   def dims(self) -> T:
     return self.base.dims()
+
+  def dims(self, idx: int) -> int:
+    return self.base.dims(idx)
 
   def cgrid(self):
     return self.base.cgrid()
@@ -225,6 +232,10 @@ class View[E,T,C]:
   def __init__(self, other: Multidim[E,T,C]):
     self.base = other
 
+  def __iter__(self):
+    for item in self.base:
+      yield View(item)
+
   def shallow_cast[E2](self) -> Block[E2,T,C]:
     """
     Creates a new Block with same dimensions and mappings as self, but with a different element type (E2).
@@ -234,6 +245,9 @@ class View[E,T,C]:
 
   def dims(self) -> T:
     return self.base.dims()
+
+  def dims(self, idx: int) -> int:
+    return self.base.dims(idx)
 
   def cgrid_mapping(self):
     return self.base.cgrid_mapping()

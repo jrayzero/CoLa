@@ -1,5 +1,4 @@
 from ..cola.frontend.block import *
-from ..cola.frontend.scan import scan
 from ..cola.frontend.flagtree import *
 from ..cola.frontend.constants import MAX_INT_32
 from partition import *
@@ -105,7 +104,7 @@ class IntraPred16x16:
     coeffs = Block(residual)
     coeff_blks = Partition.grid(coeffs, 4)
     quant_blks = Partition.grid(quant, 4)
-    for resid, coeff_blk, qblk in scan(xform_blks, coeff_blks, quant_blks):
+    for resid, coeff_blk, qblk in zip(xform_blks, coeff_blks, quant_blks):
       DCT.dct4x4(resid, coeff_blk)
       # store the DCs for later
       val = coeff_blk(0)
@@ -116,7 +115,7 @@ class IntraPred16x16:
     # now reconstruction
     Hadamard.ihadamard4x4(DCs, coeffs[::4, ::4])
     coeff_blks = Partition.grid(coeffs, 4)
-    for cblk, qblk in scan(coeff_blks, quant_blks):
+    for cblk, qblk in zip(coeff_blks, quant_blks):
       Quantize.dequantize_4x4(qblk, cblk, cfg.qp)
       DCT.idct4x4(cblk, cblk)
       cblk >>= 6

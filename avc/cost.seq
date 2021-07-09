@@ -1,5 +1,4 @@
 from ..cola.frontend.block import *
-from ..cola.frontend.scan import scan
 from transforms import Hadamard
 
 import math
@@ -14,7 +13,7 @@ class Cost:
 
   def sad(actual, estimate) -> int:
     cost = 0
-    for r,p in scan(actual, estimate):
+    for r,p in zip(actual, estimate):
       cost += abs(r() - p())
     return cost
 
@@ -23,7 +22,7 @@ class Cost:
 
   def ssd(actual, estimate) -> int:
     cost = 0
-    for r,p in scan(actual, estimate):
+    for r,p in zip(actual, estimate):
       cost += (r() - p()) ** 2
     return cost
 
@@ -32,7 +31,7 @@ class Cost:
     diff = actual - estimate
     output = Block(diff)
     Hadamard.hadamard4x4(diff, output)
-    for h in scan(output):
+    for h in output:
       cost += abs(h())
     return cost   
 

@@ -1,6 +1,5 @@
 from ..cola.frontend.lut import *
 from ..cola.frontend.block import *
-from ..cola.frontend.scan import *
 from transforms import DCT
 import math
 
@@ -101,7 +100,7 @@ class Quantize:
     QP = cfg.qp
     qp_per = cfg.qp_per_matrix[QP]
     q_bits = 15 + qp_per
-    for _coeff,_q,_scale,_iscale in scan(coeffs, quant, cfg.scale_quant_matrix[QP%6,:,:], cfg.inv_scale_quant_matrix[QP%6,:,:]):
+    for _coeff,_q,_scale,_iscale in zip(coeffs, quant, cfg.scale_quant_matrix[QP%6,:,:], cfg.inv_scale_quant_matrix[QP%6,:,:]):
       coeff = _coeff()
       scaled_coeff = abs(coeff) * _scale()
       level = scaled_coeff + cfg.offset_comp[QP//6]
@@ -116,7 +115,7 @@ class Quantize:
     QP = cfg.qp
     qp_per = cfg.qp_per_matrix[QP]
     # some of this may actually be unnecessary, but I just want to match some output from JM
-    for _level,_iscale in scan(quant, cfg.inv_scale_quant_matrix[QP%6,:,:]):
+    for _level,_iscale in zip(quant, cfg.inv_scale_quant_matrix[QP%6,:,:]):
       level = _level()
       if level != 0:
         level = min(level, 2063)  # cap for CAVLC

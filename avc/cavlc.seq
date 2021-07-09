@@ -1,6 +1,5 @@
 from ..cola.frontend.bits import *
 from ..cola.frontend.flagtree import *
-from ..cola.frontend.scan import *
 from constants import *
 from trav import *
 
@@ -183,7 +182,7 @@ class CAVLC:
     nonzero_coeffs = []
     zero_runs = [0]
     # TODO DON'T INCLUDE DC COEFF IF IS 16x16 (then coeff(0) is the DC, which is done separately)
-    for _coeff in scan(zigzag(coeffs.dims()[0])(coeffs)):
+    for _coeff in zigzag(coeffs.dims()[0])(coeffs):
       coeff = _coeff()               
       if coeff == 1:
         trailing_ones.pack(0)

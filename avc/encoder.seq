@@ -1,6 +1,5 @@
 from ..cola.frontend.block import *
 from ..cola.frontend.error import *
-from ..cola.frontend.scan import *
 from ..cola.frontend.flagtree import *
 
 from basic_io import *
@@ -54,7 +53,7 @@ assert not cfg.skip_16x16_intra or not cfg.skip_4x4_intra
 # some stats
 total_psnr = 0.0
 all_bits = Bits[64]()
-
+start = _C.seq_time_monotonic()
 # main loop
 for f in range(cfg.nframes):
   if cfg.color_space == YUV:
@@ -72,7 +71,7 @@ for f in range(cfg.nframes):
   cur_slice_id = 0
   mbs_in_slice = 0
   mb_idx = 0
-  for Y_mb,Y_rmb in scan(Y_mbs, Y_rmbs):
+  for Y_mb,Y_rmb in zip(Y_mbs, Y_rmbs):
     blk_info[Y_mb].slice_id = cur_slice_id
     # Intra prediction
     blk_info[Y_mb].is_intra_pred = True
@@ -92,7 +91,7 @@ for f in range(cfg.nframes):
         blk_info[Y_mb] = mode_tree_4x4
         Y_recons[local_recons_4x4_unfilt] = local_recons_4x4_unfilt
         # encode the quantized result so we can get a bit count. Doesn't do any syntax stuff, just pure cavlc
-        for q_4x4 in scan(Partition.grid_quadtree(quant_4x4, 2)[0]):
+        for q_4x4 in Partition.grid_quadtree(quant_4x4, 2)[0]:
           _, total_coeffs = CAVLC.encode(q_4x4, blk_info, all_bits)
           blk_info[q_4x4].total_coeffs = total_coeffs
     elif not cfg.skip_16x16_intra:
@@ -104,7 +103,7 @@ for f in range(cfg.nframes):
       Y_recons[local_recons_16x16_unfilt] = local_recons_16x16_unfilt
       # TODO need DC also
       Q_16x16 = Partition.grid_quadtree(quant_16x16, 2)[0]
-      for q_16x16 in scan(Q_16x16):
+      for q_16x16 in Q_16x16:
         _, total_coeffs = CAVLC.encode(q_16x16, blk_info, all_bits)
         blk_info[q_16x16].total_coeffs = total_coeffs
     elif not cfg.skip_4x4_intra:
@@ -113,7 +112,7 @@ for f in range(cfg.nframes):
       blk_info[Y_mb] = mode_tree_4x4
       Y_recons[local_recons_4x4_unfilt] = local_recons_4x4_unfilt
       # encode the quantized result so we can get a bit count. Doesn't do any syntax stuff, just pure cavlc
-      for q_4x4 in scan(Partition.grid_quadtree(quant_4x4, 2)[0]):
+      for q_4x4 in Partition.grid_quadtree(quant_4x4, 2)[0]:
         _, total_coeffs = CAVLC.encode(q_4x4, blk_info, all_bits)
         blk_info[q_4x4].total_coeffs = total_coeffs
     # update slice status
@@ -125,9 +124,10 @@ for f in range(cfg.nframes):
   # compute some stats on this frame
   # TODO use filtered reconstruction?
   psnr = Cost.PSNR(int(Y_frame), Y_recons, cfg.bit_depth)
-  note('frame ' + str(f) + ' has psnr ' + str(psnr))
+#  note('frame ' + str(f) + ' has psnr ' + str(psnr))
   total_psnr += psnr
-
+stop = _C.seq_time_monotonic()
+print 'Time ' + str((stop-start)/1e9)
 note('Avg nbits/frame ' + str(len(all_bits)//cfg.nframes))
 avg_psnr = total_psnr / float(cfg.nframes)
 note('Y_psnr/frame ' + str(avg_psnr))

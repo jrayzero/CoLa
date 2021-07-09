@@ -1,0 +1,190 @@
+from ..cola.frontend.block import *
+from ..cola.frontend.scan import scan
+from ..cola.frontend.flagtree import *
+from ..cola.frontend.constants import MAX_INT_32
+from partition import *
+from utils import *
+from constants import *
+from cost import *
+from structures import *
+from transforms import *
+from quantize import *
+
+      # TODO elementwise min so don't need loop for this
+
+#class H264IntraChroma:
+#
+#  def schedule_chroma[E,T,C](Cb_region_to_predict: View[E,T,C], to_pred_Cr_region: View[E,T,C], ref_Cb_region, \
+#                             ref_Cr_region, intra_pred_info, intra_pred_mode_info, mb_type_info, pred_info, \
+#                             constrained_intra_pred_flag, bit_depth_C):
+#    """
+#    Predict chroma Cb and Cr. If chroma_array_type == 3, I believe they should be 16x16 macroblocks (so no downsampling).
+#    @ARG(Cb_region_to_predict, TO_PRED)
+#    @ARG(to_pred_Cr_region, TO_PRED)
+#    @ARG(ref_Cb_region, REF_REGION)
+#    @ARG(ref_Cr_region, REF_REGION)
+#    @ARG(intra_pred_info, INTRA_PRED_INFO)
+#    @ARG(intra_pred_mode_info, INTRA_PRED_MODE_INFO)
+#    @ARG(mb_type_info, MB_TYPE_INFO)
+#    @ARG(pred_info, PRED_INFO)
+#    @ARG(constrained_intra_pred_flag, CONSTRAINED_INTRA_PRED_FLAG)    
+#    @ARG(bit_depth_C)
+#    """
+#    ref_colocated_Cb = ref_Cb_region[Cb_region_to_predict]
+#    ref_colocated_Cr = ref_Cr_region[to_pred_Cr_region]
+#    # only need to run this once since Cb and Cr have same parameterizations
+#    # It's also the same as 16x16, ehnce calling it
+#    left,up,up_left = H264Intra16x16.check_availability(Cb_region_to_predict, ref_colocated_Cb, mb_type_info, \
+#                                                        pred_info, constrained_intra_pred_flag)    
+#    preds_Cb: list[Optional[Block[E,T,C]]] = [Block(Cb_region_to_predict), None, None, None]
+#    preds_Cr: list[Optional[Block[E,T,C]]] = [Block(Cb_region_to_predict), None, None, None]
+#    if up:
+#      preds_Cb[1] = Block(Cb_region_to_predict)
+#      preds_Cr[1] = Block(to_pred_Cr_region)
+#      H264Intra16x16.vertical(preds_Cb[1], ref_colocated_Cb)
+#      H264Intra16x16.vertical(preds_Cr[1], ref_colocated_Cr)
+#    if left:
+#      preds_Cb[2] = Block(Cb_region_to_predict)
+#      preds_Cr[2] = Block(to_pred_Cr_region)
+#      H264Intra16x16.horizontal(preds_Cb[2], ref_colocated_Cb)
+#      H264Intra16x16.horizontal(preds_Cr[2], ref_colocated_Cr)      
+#    # TODO left off here. Not enough energy to do the rest of the chroma stuff. Also, seems like the standard has some
+#    # superfluous references to chroma_array_type
+#
+#  def schedule_chroma_array_type_3(Cb_region_to_predict, Cr_region_to_predict, ref_Cb_region, ref_Cr_region, intra_pred_info, \
+#                                   intra_pred_mode_info, pred_info, constrained_intra_pred_flag, bit_depth_C):
+#    """
+#    Predict 16x16 chroma according to clause 8.3.4.5.
+#    @ARG(Cb_region_to_predict, TO_PRED)
+#    @ARG(Cr_region_to_predict, TO_PRED)
+#    @ARG(ref_Cb_region, REF_REGION)
+#    @ARG(ref_Cr_region, REF_REGION)
+#    @ARG(intra_pred_info, INTRA_PRED_INFO)
+#    @ARG(intra_pred_mode_info, INTRA_PRED_MODE_INFO)
+#    @ARG(pred_info, PRED_INFO)
+#    @ARG(constrained_intra_pred_flag, CONSTRAINED_INTRA_PRED_FLAG)
+#    @ARG(bit_depth_C)
+#    """
+#    # only need to do this once since cb and cr share same structure
+#    intra = intra_pred_info[Cb_region_to_predict["macroblock"]]
+#    ref_colocated_Cb = ref_Cb_region[Cb_region_to_predict]
+#    ref_colocated_Cr = ref_Cr_region[Cr_region_to_predict]
+#    # create blocks to hold the resulting predictions
+#    pred_Cb = Block(Cb_region_to_predict)
+#    pred_Cr = Block(Cb_region_to_predict)
+#    if intra == INTRA_4x4:
+#      # partition the prediction region into 4x4 subblocks and predict each using the corresponding mode used
+#      # for luma
+#      Cb_tree = Partition.grid(ref_colocated_Cb, 4)[0]
+#      Cr_tree = Partition.grid(ref_colocated_Cr, 4)[0]
+#      for Cb,Cr in scan(Cb_tree, Cr_tree):
+#        mode = intra_pred_mode_info(Cb)
+#        if mode == 0:
+#          H264Intra4x4.vertical(pred_Cb[Cb], Cb)
+#          H264Intra4x4.vertical(pred_Cr[Cr], Cr)
+#        elif mode == 1:
+#          H264Intra4x4.horizontal(pred_Cb[Cb], Cb)
+#          H264Intra4x4.horizontal(pred_Cr[Cr], Cr)          
+#        elif mode == 2:
+#          H264Intra4x4.DC_a(pred_Cb[Cb], Cb)
+#          H264Intra4x4.DC_a(pred_Cr[Cr], Cr)
+#        elif mode == 3:
+#          H264Intra4x4.DC_b(pred_Cb[Cb], Cb)
+#          H264Intra4x4.DC_b(pred_Cr[Cr], Cr)          
+#        elif mode == 4:
+#          H264Intra4x4.DC_c(pred_Cb[Cb], Cb)
+#          H264Intra4x4.DC_c(pred_Cr[Cr], Cr)          
+#        elif mode == 5:
+#          H264Intra4x4.DC_d(pred_Cb[Cb], bit_depth_C)
+#          H264Intra4x4.DC_d(pred_Cr[Cr], bit_depth_C)
+#        elif mode == 6:
+#          H264Intra4x4.diag_down_left(pred_Cb[Cb], Cb)
+#          H264Intra4x4.diag_down_left(pred_Cr[Cr], Cr)
+#        elif mode == 7:
+#          H264Intra4x4.diag_down_right(pred_Cb[Cb], Cb)
+#          H264Intra4x4.diag_down_right(pred_Cr[Cr], Cr)
+#        elif mode == 8:
+#          H264Intra4x4.vertical_right(pred_Cb[Cb], Cb)
+#          H264Intra4x4.vertical_right(pred_Cr[Cr], Cr)
+#        elif mode == 9:
+#          H264Intra4x4.horizontal_down(pred_Cb[Cb], Cb)
+#          H264Intra4x4.horizontal_down(pred_Cr[Cr], Cr)          
+#        elif mode == 10:
+#          H264Intra4x4.vertical_left(pred_Cb[Cb], Cb)
+#          H264Intra4x4.vertical_left(pred_Cr[Cr], Cr)
+#        else:
+#          H264Intra4x4.horizontal_up(pred_Cb[Cb], Cb)
+#          H264Intra4x4.horizontal_up(pred_Cr[Cr], Cr)
+#    elif intra == INTRA_8x8:
+#      # partition the prediction region into 8x8 subblocks and predict each using the corresponding mode used
+#      # for luma
+#      Cb_tree = Partition.grid(ref_colocated_Cb, 8)[0]
+#      Cr_tree = Partition.grid(ref_colocated_Cr, 8)[0]
+#      for Cb,Cr in scan(Cb_tree, Cr_tree):
+#        # first, we need to reference filter
+#        left,up_left,up,up_right = H264Intra8x8.check_availability(Cb_region_to_predict, ref_colocated_Cb, pred_info, constrained_intra_pred_flag)
+#        filt_row_Cb,filt_col_Cb,up_right2 = H264Intra8x8.low_pass_filter(Cb, up, left, up_right, up_left)
+#        filt_row_Cr,filt_col_Cr,up_right2 = H264Intra8x8.low_pass_filter(Cr, up, left, up_right, up_left)
+#        up_right = up_right2
+#        mode = intra_pred_mode_info(Cb)
+#        if mode == 0:
+#          H264Intra8x8.vertical(pred_Cb[Cb], filt_row_Cb)
+#          H264Intra8x8.vertical(pred_Cr[Cr], filt_row_Cr)
+#        elif mode == 1:
+#          H264Intra8x8.horizontal(pred_Cb[Cb], filt_col_Cb)
+#          H264Intra8x8.horizontal(pred_Cr[Cr], filt_col_Cr)
+#        elif mode == 2:
+#          H264Intra8x8.DC_a(pred_Cb[Cb], filt_row_Cb, filt_col_Cb)
+#          H264Intra8x8.DC_a(pred_Cr[Cr], filt_row_Cr, filt_col_Cr)
+#        elif mode == 3:
+#          H264Intra8x8.DC_b(pred_Cb[Cb], filt_col_Cb)
+#          H264Intra8x8.DC_b(pred_Cr[Cr], filt_col_Cr)
+#        elif mode == 4:
+#          H264Intra8x8.DC_c(pred_Cb[Cb], filt_row_Cb)
+#          H264Intra8x8.DC_c(pred_Cr[Cr], filt_row_Cr)
+#        elif mode == 5:
+#          H264Intra8x8.DC_d(pred_Cb[Cb], bit_depth_C)
+#          H264Intra8x8.DC_d(pred_Cr[Cr], bit_depth_C)
+#        elif mode == 6:
+#          H264Intra8x8.diag_down_left(pred_Cb[Cb], filt_row_Cb)
+#          H264Intra8x8.diag_down_left(pred_Cr[Cr], filt_row_Cr)
+#        elif mode == 7:
+#          H264Intra8x8.diag_down_right(pred_Cb[Cb], filt_row_Cb, filt_col_Cb)
+#          H264Intra8x8.diag_down_right(pred_Cr[Cr], filt_row_Cr, filt_col_Cr)
+#        elif mode == 8:
+#          H264Intra8x8.vertical_right(pred_Cb[Cb], filt_row_Cb, filt_col_Cb)
+#          H264Intra8x8.vertical_right(pred_Cr[Cr], filt_row_Cr, filt_col_Cr)
+#        elif mode == 9:
+#          H264Intra8x8.horizontal_down(pred_Cb[Cb], filt_row_Cb, filt_col_Cb)
+#          H264Intra8x8.horizontal_down(pred_Cr[Cr], filt_row_Cr, filt_col_Cr)
+#        elif mode == 10:
+#          H264Intra8x8.vertical_left(pred_Cb[Cb], filt_row_Cb)
+#          H264Intra8x8.vertical_left(pred_Cr[Cr], filt_col_Cr)
+#        else:
+#          H264Intra8x8.horizontal_up(pred_Cb[Cb], filt_col_Cb)
+#          H264Intra8x8.horizontal_up(pred_Cr[Cr], filt_col_Cr)
+#    else:
+#      mode = intra_pred_mode_info(ref_colocated_Cb)
+#      if mode == 0:
+#        H264Intra16x16.vertical(pred_Cb, ref_colocated_Cb)
+#        H264Intra16x16.vertical(pred_Cr, ref_colocated_Cr)
+#      elif mode == 1:
+#        H264Intra16x16.horizontal(pred_Cb, ref_colocated_Cb)
+#        H264Intra16x16.horizontal(pred_Cr, ref_colocated_Cr)    
+#      elif mode == 2:
+#        H264Intra16x16.DC_a(pred_Cb, ref_colocated_Cb)
+#        H264Intra16x16.DC_a(pred_Cr, ref_colocated_Cr)
+#      elif mode == 3:
+#        H264Intra16x16.DC_b(pred_Cb, ref_colocated_Cb)
+#        H264Intra16x16.DC_b(pred_Cr, ref_colocated_Cr)
+#      elif mode == 4:
+#        H264Intra16x16.DC_c(pred_Cb, ref_colocated_Cb)
+#        H264Intra16x16.DC_c(pred_Cr, ref_colocated_Cr)
+#      elif mode == 5:
+#        H264Intra16x16.DC_d(pred_Cb, bit_depth_C)
+#        H264Intra16x16.DC_d(pred_Cr, bit_depth_C)
+#      elif mode == 6:
+#        H264Intra16x16.DC_d(pred_Cb, ref_colocated_Cb, bit_depth_C)
+#        H264Intra16x16.DC_d(pred_Cr, ref_colocated_Cr, bit_depth_C)    
+#    return pred_Cb, pred_Cr       
+#

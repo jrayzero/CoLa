@@ -37,7 +37,7 @@ class AndPTree[E,T,C]:
       for child in self.children:
         yield from child._iterate_leaves()
 
-  def do_iter(self):
+  def __iter__(self):
     return self._iterate_leaves()
 
   def __getitem__(self, idx: int):
@@ -179,14 +179,14 @@ class PTree[E,T,C]:
     for child in self.children:
       child._reset_nandtrees()
 
-  def do_iter(self):
+  def __iter__(self):
     self._reset_nandtrees()
     self._compute_nandtrees()
     return self._generate_andtrees()
 
   # get a particular andtree
   def __getitem__(self, idx: int) -> AndPTree[E,T,C]:
-    it = self.do_iter()
+    it = iter(self)
     i = 0
     while i < idx:
       next(it)

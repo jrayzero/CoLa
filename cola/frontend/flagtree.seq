@@ -365,7 +365,7 @@ class FlagTree[C,F]:
       for child in self.children:
         yield from child._iterate_leaves()
 
-  def do_iter(self):
+  def __iter__(self):
     return self._iterate_leaves()
 
   def _inner_str(self, indent) -> str:

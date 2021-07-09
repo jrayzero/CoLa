@@ -38,13 +38,14 @@ if (NOT DEFINED CODON_DEP)
 endif ()
 
 # DSL
-set (COLA_DSL_CPP cola/compiler/cola.cpp)
-set (COLA_DSL_HDR cola/compiler/cola.h)
+find_library(SEQ seq REQUIRED PATHS ${CODON_BUILD} NO_DEFAULT_PATH)
+set (COLA_DSL_CPP cola/compiler/cola.cpp cola/compiler/ptree.cpp)
+set (COLA_DSL_HDR cola/compiler/cola.h cola/compiler/ptree.h)
 add_library (cola SHARED ${COLA_DSL_CPP} ${COLA_DSL_HDR})
 target_include_directories(cola PUBLIC ${CODON_TOP} ${CODON_TOP}/compiler)
+target_link_libraries(cola ${STATIC_LIBCPP} ${SEQ} Threads::Threads)
 
 # Cola command-line compiler
-find_library(SEQ seq REQUIRED PATHS ${CODON_BUILD} NO_DEFAULT_PATH)
 add_executable(colac cola/runtime/main.cpp)
 target_include_directories(colac PUBLIC ${CODON_DEP}/include)
 target_link_libraries(colac ${STATIC_LIBCPP} cola ${SEQ} Threads::Threads)

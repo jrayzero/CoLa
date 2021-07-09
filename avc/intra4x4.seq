@@ -1,5 +1,4 @@
 from ..cola.frontend.block import *
-from ..cola.frontend.scan import scan
 from ..cola.frontend.flagtree import *
 from ..cola.frontend.constants import MAX_INT_32
 from partition import *
@@ -92,7 +91,7 @@ class IntraPred4x4:
       local_Y_recons[Y_rmb[-1,16:20]] = Y_rmb[-1,16:20]
     # co-locate the macroblock in the whole reconstruction block
     local_Y_rmb = local_Y_recons[Y_mb]
-    for y_4x4 in scan(Y_4x4):
+    for y_4x4 in Y_4x4:
       # Determine availability
       left, up, up_left, up_right = IntraPred4x4.left_available(y_4x4, blk_info, mode_tree), \
                                     IntraPred4x4.up_available(y_4x4, blk_info, mode_tree), \
@@ -173,7 +172,7 @@ class IntraPred4x4:
       # 6=DQ_BITS
       # TODO elementwise min so don't need loop for this
       local_Y_rmb[coeffs] = Quantize.rshift_rnd_sf(local_Y_rmb[coeffs], 6) + ~local_best_pred
-      for c in scan(local_Y_rmb[coeffs]):
+      for c in local_Y_rmb[coeffs]:
         c[0] = min(c(), 255)
     # compute the total cost for the whole 16x16 macroblock
     total_cost = 0

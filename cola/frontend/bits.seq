@@ -45,13 +45,13 @@ class RBits[N:int]:
       new_l0 |= (b << UInt[N](N-i-1))    
     self.l0_buffer = new_l0
 
-  def do_iter(self) -> Generator[UInt[N]]:
+  def __iter__(self) -> Generator[UInt[N]]:
     for i in range(len(self)):
       yield (self.l0_buffer >> UInt[N](N-i-1)) & UInt[N](1)
 
   def __str__(self):
     s = 'nbits ' + str(len(self)) + '\n'
-    for b in self.do_iter():
+    for b in self:
       s += str(int(b))
     return s
 
@@ -170,12 +170,12 @@ class Bits[N: int]:
     return self
 
   def pack[T:int](self, val: RBits[T]):
-    for v in val.do_iter():
+    for v in val:
       self.pack(v, 1)
     return self
 
   def pack[T:int](self, val: Bits[T]):
-    for v in val.do_iter():
+    for v in val:
       self.pack(v, 1)
     return self
 
@@ -231,11 +231,11 @@ class Bits[N: int]:
   # I'm lazy
   def __str__(self):
     s = 'nbits (factoring in offset) : ' + str(len(self)) + '\n'
-    for b in self.do_iter():
+    for b in self:
       s += str(int(b))
     return s
 
-  def do_iter(self):
+  def __iter__(self):
     # doesn't modify the iterator
     l = len(self)
     local_offset = 0
@@ -344,7 +344,7 @@ class Bits[N: int]:
     # really naive looping method to get the appropriate elements, 
     idx2 = 0
     new_bits = Bits[N]()
-    for b in self.do_iter():
+    for b in self:
       if start <= idx2 < stop:
         new_bits.pack(b)
       elif idx2 > stop:
@@ -434,7 +434,7 @@ class Bits[N: int]:
   def __eq__[S:int](self, other: Bits[S]):
     if len(self) != len(other):
       return False
-    for a,b in zip(self.do_iter(), other.do_iter()):
+    for a,b in zip(self, other):
       if a != b:
         return False
     return True
@@ -445,7 +445,7 @@ class Bits[N: int]:
     """
     if len(self) != len(other):
       return False
-    for a,b in zip(self.do_iter(), other):
+    for a,b in zip(self, other):
       if b != '0' and b != '1':
         raise ColaError()
       bb = b != '0'
@@ -462,7 +462,7 @@ class Bits[N: int]:
     new_bits = Bits[64]() 
     new_bits.pack(other, len(self))
     final_idx = 0
-    for a,b in zip(self.do_iter(), new_bits.do_iter()):
+    for a,b in zip(self, new_bits):
       if a != b:
         return False
       final_idx += 1

@@ -216,7 +216,7 @@ class AppliedTraversal[E,T,C]:
 
   # not implemented as __iter__ cause I want the user to call scan
   # generates view values
-  def do_iter(self) -> Generator[View[E,T,C]]:
+  def __iter__(self) -> Generator[View[E,T,C]]:
     assert len(self.origin) > 0
     for coord in self.traversal.iter_with_origin(self.origin):
       yield self.root[coord]
