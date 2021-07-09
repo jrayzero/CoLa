@@ -129,7 +129,7 @@ class Multidim[E,T,C]:
     self._cgrid = other._cgrid
     self._buffer_owner = other._buffer_owner
     self._buffer = other._buffer
-    self._dims = tuple(c.effective_sz for c in cgrid_mapping) 
+    self._dims = tuple(c[3] for c in cgrid_mapping) 
     self._nunits = mul_reduce(self._dims)
     self._is_owner = False
     self._is_root = False
@@ -187,7 +187,7 @@ class Multidim[E,T,C]:
     """
     Return the origin of self within its CoordGrid
     """
-    return tuple(c.start for c in self._cgrid_mapping)
+    return tuple(c[0] for c in self._cgrid_mapping)
   
   # doesn't do a containment check. just compares relative locations
   def origin_relative_to[E2](self, other: Multidim[E2,T,C]) -> T:
@@ -228,8 +228,8 @@ class Multidim[E,T,C]:
     if staticlen(self_mapping) == 0:
       return True
     else:
-      starts_oob = self_mapping[0].start < other_mapping[0].start
-      stops_oob = self_mapping[0].stop > other_mapping[0].stop
+      starts_oob = self_mapping[0][0] < other_mapping[0][0]
+      stops_oob = self_mapping[0][1] > other_mapping[0][1]
       return not (starts_oob or stops_oob) and Multidim._do_fully_contained(self_mapping[1:], other_mapping[1:])
 
   def fully_contained[E2](self, other: Multidim[E2,T,C]) -> bool:
@@ -251,9 +251,9 @@ class Multidim[E,T,C]:
     if staticlen(self_mapping) == 0:
       return True
     else:
-      starts_oob = self_mapping[0].start == other_mapping[0].start
-      stops_oob = self_mapping[0].stop == other_mapping[0].stop
-      strides_oob = self_mapping[0].stride == other_mapping[0].stride
+      starts_oob = self_mapping[0][0] == other_mapping[0][0]
+      stops_oob = self_mapping[0][1] == other_mapping[0][1]
+      strides_oob = self_mapping[0][2] == other_mapping[0][2]
       return starts_oob and stops_oob and strides_oob and Multidim._do_is_same_region(self_mapping[1:], other_mapping[1:])
 
   def is_same_region[E2](self, other: Multidim[E2,T,C]) -> bool:
@@ -272,8 +272,8 @@ class Multidim[E,T,C]:
     if staticlen(self_mapping) == 0:
       return True
     else:
-      starts_oob = self_mapping[0].start < 0
-      stops_oob = self_mapping[0].stop > other._dims[0]
+      starts_oob = self_mapping[0][0] < 0
+      stops_oob = self_mapping[0][1] > other._dims[0]
       return not (starts_oob or stops_oob) and Multidim._do_fully_contained(self_mapping[1:], other[1:])
 
   def fully_contained(self, other: CoordGrid) -> bool:
@@ -332,7 +332,7 @@ class Multidim[E,T,C]:
       return ()
     else:
       c = local_coord[0]
-      c = (c * cgrid_mapping[0].stride + cgrid_mapping[0].start - buffer_origin[0]) // (buff_owner_cgrid_mapping[0].stride)
+      c = (c * cgrid_mapping[0][2] + cgrid_mapping[0][0] - buffer_origin[0]) // (buff_owner_cgrid_mapping[0][2])
       return (c,) + Multidim._doremap_local_coord(local_coord[1:], buffer_origin[1:], cgrid_mapping[1:], buff_owner_cgrid_mapping[1:])
 
   def remap_local_coord_to_buffer_lidx[B:int](self, local_coord):
@@ -427,19 +427,19 @@ class Multidim[E,T,C]:
       bm = buff_map[0]
       new_start = 0
       new_stop = 0
-      if am.start < bm.start:
-        new_start = bm.start
-      elif am.start >= bm.stop:
-        new_start = max(0, bm.stop - bm.stride)
+      if am[0] < bm[0]:
+        new_start = bm[0]
+      elif am[0] >= bm[1]:
+        new_start = max(0, bm[1] - bm[2])
       else:
-        new_start = am.start
-      if am.stop <= bm.start:
-        new_stop = min(bm.stop, bm.start + bm.stride)
-      elif am.stop > bm.stop:
-        new_stop = bm.stop
+        new_start = am[0]
+      if am[1] <= bm[0]:
+        new_stop = min(bm[1], bm[0] + bm[2])
+      elif am[1] > bm[1]:
+        new_stop = bm[1]
       else:
-        new_stop = am.stop
-      return (ColaSlice(new_start, new_stop, am.stride),) + Multidim._do_clamp_to(acc_map[1:], buff_map[1:])
+        new_stop = am[1]
+      return (ColaSlice(new_start, new_stop, am[2]),) + Multidim._do_clamp_to(acc_map[1:], buff_map[1:])
 
   def _clamp_to(self, clamp_to: Multidim[E,T,C]) -> C:
     """
@@ -457,22 +457,22 @@ class Multidim[E,T,C]:
       # mean accessing elements within you that aren't actually a part of you.
       # Check some preconditions
       # 1) other starts on a multiple of self's stride
-      if other_cgrid_mapping[0].start % self_cgrid_mapping[0].stride != 0:
+      if other_cgrid_mapping[0][0] % self_cgrid_mapping[0][2] != 0:
         raise ColaError()
       # 2) The stride of other is a multiple of self's stride. UNLESS the size of the region that will be accessed is 1,
       # then it doesn't matter the stride
       # TODO This logic might not be totally right...
-      if other_cgrid_mapping[0].stride % self_cgrid_mapping[0].stride != 0:
+      if other_cgrid_mapping[0][2] % self_cgrid_mapping[0][2] != 0:
         # not a multiple
-        sz = other_cgrid_mapping[0].stop - other_cgrid_mapping[0].start
-        if sz // other_cgrid_mapping[0].stride > 1:
+        sz = other_cgrid_mapping[0][1] - other_cgrid_mapping[0][0]
+        if sz // other_cgrid_mapping[0][2] > 1:
           # you are specifying too many elements, making it an invalid stride
           raise ColaError(str(other_cgrid_mapping))
-      stop = other_cgrid_mapping[0].stop - self_cgrid_mapping[0].start - 1
+      stop = other_cgrid_mapping[0][1] - self_cgrid_mapping[0][0] - 1
       # creating the mapping RELATIVE to self
-      return (ColaSlice(relative_origin[0]//self_cgrid_mapping[0].stride, \
-                        stop//self_cgrid_mapping[0].stride+1, \
-                        other_cgrid_mapping[0].stride),) + \
+      return (ColaSlice(relative_origin[0]//self_cgrid_mapping[0][2], \
+                        stop//self_cgrid_mapping[0][2]+1, \
+                        other_cgrid_mapping[0][2]),) + \
                         Multidim._get_mapping(self_cgrid_mapping[1:], other_cgrid_mapping[1:], other_origin[1:], relative_origin[1:])       
 
   def __getitem__[E2](self, other: Multidim[E2,T,C]) -> Multidim[E,T,C]:    
@@ -538,14 +538,15 @@ class Multidim[E,T,C]:
         return (ColaSlice(idxs[0],idxs[0]+1,1),) + Multidim._do_canonicalize(idxs[1:],dims[1:])
 
   def _do_combined(self_cgrid_mapping, canon):
+    # combine two mappings together
     if staticlen(self_cgrid_mapping) == 0:
       return ()
     else:
       this = self_cgrid_mapping[0]
       that = canon[0]
-      combo_start = this.start + that.start * this.stride
-      combo_stop = this.start + that.stop * this.stride
-      combo_stride = this.stride * that.stride
+      combo_start = this[0] + that[0] * this[2]
+      combo_stop = this[0] + that[1] * this[2]
+      combo_stride = this[2] * that[2]
       return (ColaSlice(combo_start, combo_stop, combo_stride),) + Multidim._do_combined(self_cgrid_mapping[1:], canon[1:])
 
   def __getitem__(self, idxs) -> Multidim[E,T,C]:
