@@ -249,8 +249,8 @@ void writeToExecutable(std::unique_ptr<seq::ir::LLVMVisitor> &llvm_obj, const st
   executeCommand(command);
 
 #if __APPLE__
-  if (db.debug) {
-    llvm_obj->executeCommand({"dsymutil", filename});
+  if (llvm_obj->getDebugInfo().debug) {
+    executeCommand({"dsymutil", filename});
   }
 #endif    
 }
@@ -316,7 +316,7 @@ int buildMode(const std::vector<const char *> &args) {
     writeToExecutable(result.visitor, filename, libsVec);
     break;
   case BuildKind::Gprof:
-      writeToExecutable(result.visitor, filename, libsVec, {"-pg"});
+    writeToExecutable(result.visitor, filename, libsVec, {"-pg"});
     break;    
   case BuildKind::Detect:
     result.visitor->compile(filename, libsVec);
