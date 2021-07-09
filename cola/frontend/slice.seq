@@ -2,44 +2,59 @@ import math
 
 # A ColaSlice is adjusted on creation, so we do not need to unwrap the optionals
 # on every access
-#@tuple(init=False)
+@tuple
 class ColaSlice:
   start: int
   stop: int
   stride: int
   effective_sz: int
 
-  def __init__(self, start: int, stop: int, stride: int):
-    sz,tight = ColaSlice._compute_effective_sz(start, stop, 1, stride-1)
-    self.start = start
-    self.stop = tight
-    self.stride = stride
-    self.effective_sz = sz
+#  def __init__(self, start: int, stop: int, stride: int):
+  def __new__(start: int, stop: int, stride: int):
+    sz,tight = ColaSlice._compute_effective_sz(start, stop, stride)#1, stride-1)
+    return (start, tight, stride, sz)
+
+  def __new__(start: int, stop: int):
+    return (start, stop, 1, start-stop-1)  
+#    self.start = start
+#    self.stop = tight
+#    self.stride = stride
+#    self.effective_sz = sz
     #    return start,tight,stride,sz
+
 
   def __eq__(self, other: ColaSlice):
     return self.start == other.start and self.stop == other.stop and self.stride == other.stride
 
-  def __ne__(self, other: ColaSlice):
+  def __eq__(self, other: Tuple[int,int,int,int]):
+    return self.start == other[0] and self.stop == other[1] and self.stride == other[2] and self.effective_sz == other[3]
+
+  def __ne__(self, other):
     return not (self == other)
 
-  def _compute_effective_sz(start, stop, take, skip) -> Tuple[int,int]:
-    full_range = stop - start
-    # get all the groupings of take + skip that fit into the range
-    full_range_takes = full_range // (take + skip)
-    # see whatever is left
-    left_over = full_range % (take + skip)
-    # could have some takes with only part of a skip, which still becomes a take
-    left_over_takes = 1 if left_over >= take else 0    
-    # all the groups of takes we could take
-    all_takes = left_over_takes + full_range_takes
-    nelems_take = all_takes * take
-    all_skips = all_takes - 1
-    nelems_skip = all_skips * skip
-    return all_takes,start+nelems_take+nelems_skip
+  def _compute_effective_sz(start, stop, stride) -> Tuple[int,int]:
+    full_range = (stop-1-start) # stop-1 since stop is exclusive
+    sz = full_range // stride + 1
+    tight = start + (sz-1) * stride + 1
+    return sz,tight
 
-  def __str__(self):
-    return str(self.start) + ':' + str(self.stop) + ':' + str(self.stride) + '(' + str(self.effective_sz) + ')'
+#  def _compute_effective_sz(start, stop, take, skip) -> Tuple[int,int]:
+#    full_range = stop - start
+#    # get all the groupings of take + skip that fit into the range
+#    full_range_takes = full_range // (take + skip)
+#    # see whatever is left
+#    left_over = full_range % (take + skip)
+#    # could have some takes with only part of a skip, which still becomes a take
+#    left_over_takes = 1 if left_over >= take else 0    
+#    # all the groups of takes we could take
+#    all_takes = left_over_takes + full_range_takes
+#    nelems_take = all_takes * take
+#    all_skips = all_takes - 1
+#    nelems_skip = all_skips * skip
+#    return all_takes,start+nelems_take+nelems_skip
+
+#  def __str__(self):
+#    return str(self.start) + ':' + str(self.stop) + ':' + str(self.stride) + '(' + str(self.effective_sz) + ')'
     
 @extend
 class Slice:
@@ -67,3 +82,10 @@ def run_tests():
     assert ColaSlice(0,3,2) == (0,3,2,2)
     assert ColaSlice(0,4,2) == (0,3,2,2)
     assert ColaSlice(0,5,2) == (0,5,2,3)
+    assert ColaSlice(2,8,3) == (2,6,3,2)
+    assert ColaSlice(2,9,3) == (2,9,3,3)
+    assert ColaSlice(2,10,3) == (2,9,3,3)
+    assert ColaSlice(2,11,3) == (2,9,3,3)
+    assert ColaSlice(2,6,1) == (2,6,1,4)
+  t0()
+run_tests()
