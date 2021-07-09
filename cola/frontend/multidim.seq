@@ -161,6 +161,12 @@ class Multidim[E,T,C]:
     Return the dimensions of self
     """
     return self._dims
+
+  def dims(self, idx: int) -> int:
+    """
+    Return the dimensions of self
+    """
+    return self._dims[idx]
   
   def cgrid_mapping(self) -> C:
     """
@@ -375,13 +381,18 @@ class Multidim[E,T,C]:
       # TODO does this statically assert ?
       Multidim.check_int(idx)
     if staticlen(idxs) == 0:
-      x = self[(idx,)]
-      return x()
+      lidx = self.remap_local_lidx_to_buffer_lidx[1](idx)
+      return self._buffer[lidx]
+#      x = self[(idx,)]
+#      return x()
     else:
-      x = self[(idx,) + tuple(i for i in idxs)]
-      if not x.fully_contained(self._buffer_owner): # check in-bounds
-        raise ColaError(str(idx) + ',' + str(idxs))
-      return x()
+      all_idxs = (idx,) + tuple(i for i in idxs)
+      lidx = self.remap_local_coord_to_buffer_lidx[1](all_idxs)
+      return self._buffer[lidx]
+#      x = self[(idx,) + tuple(i for i in idxs)]
+#      if not x.fully_contained(self._buffer_owner): # check in-bounds
+#        raise ColaError(str(idx) + ',' + str(idxs))
+#      return x()
 
   def clamp(self) -> E:
     """
@@ -544,21 +555,6 @@ class Multidim[E,T,C]:
       return (ColaSlice(combo_start, combo_stop, combo_stride),) + Multidim._do_combined(self_cgrid_mapping[1:], canon[1:])
 
   def __getitem__(self, idxs) -> Multidim[E,T,C]:
-#    if isinstance(idxs, Multidim):
-#      """
-#      Returns the region in self corresponding to other. Both self and other must share the same cgrid.
-#      Other's stride must be a multiple of self's stride, and its origin must fall on a stride line of 
-#      self. However, other doesn't actually need to be *within* self according to these requirements,
-#      so you can get things out-of-bounds. Use clamp(self0 if you want to actually constrain this (i.e.
-#      self[other].clamp(self)
-#      """
-#      other = idxs
-#      assert self._cgrid == other._cgrid
-#      other_origin = other.origin()
-#      # this becomes the start of the accessed region
-#      relative = other.origin_relative_to(self)
-#      return self[Multidim._get_mapping(self._cgrid_mapping, other._cgrid_mapping, other_origin, relative)]
-#    else:
     """
     Return the region covered by the indexes idxs. Idxs can be combinations of integers, Slices, or
     ColaSlices. Indexing is allowed to use either 1 or N indices. If there is 1 index, it 
