@@ -1,0 +1,19 @@
+from ..cola.frontend.error import *
+from ..cola.frontend.flagtree import *
+from constants import *
+from basic_io import *
+
+def note(msg, prefix='NOTE'):
+  print(prefix + ': ' + str(msg))
+
+def clip3(x, y, z):
+  if z < x:
+    return x
+  elif z > y:
+    return y
+  else:
+    return z
+
+def clip1y(x, bit_depth_Y):
+  return clip3(0, (1<<bit_depth_Y)-1, x)
+

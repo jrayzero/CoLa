@@ -1,0 +1,172 @@
+from ..cola.frontend.block import *
+from ..cola.frontend.flagtree import *
+from ..cola.frontend.constants import MAX_INT_32
+from partition import *
+from utils import *
+from constants import *
+from cost import *
+from structures import *
+from transforms import *
+from quantize import *
+
+class IntraPred16x16:
+
+  def try_mode(data, recons, cur_best_cost, cur_best_mode, cur_best_pred, mode_id, mode_func, *args):
+    pred = data.shallow_cast[int]()
+    mode_func(pred, recons[pred], *args)
+    cost = Cost.sad(data, pred)
+    if cost < cur_best_cost:
+      return cost, mode_id, Optional(pred)
+    else:
+      return cur_best_cost, cur_best_mode, cur_best_pred
+
+  # Availability means: data exists (wrt bounds and traversal order within a partition) and has the same slice. The traversal order
+  # part is currently satisfied by checking the mode id in mode_tree. If it is -1, that block hasn't been predicted
+  # yet. But this isn't very generalizable able (see todo)
+  # TODO need to be able to check existence wrt a traversal order within a partition
+
+  def left_available(blk, blk_info):
+    if blk[0,-1].exists():
+      my_sid = blk_info[blk[0,0]].slice_id
+      left_sid = blk_info[blk[0,-1]].slice_id
+      if my_sid == left_sid:
+        return True
+    return False
+
+  def up_available(blk, blk_info):
+    if blk[-1,0].exists():
+      my_sid = blk_info[blk[0,0]].slice_id
+      up_sid = blk_info[blk[-1,0]].slice_id
+      if my_sid == up_sid:
+        return True
+    return False
+
+  def up_left_available(blk, blk_info):
+    if blk[-1,-1].exists():
+      my_sid = blk_info[blk[0,0]].slice_id
+      up_left_sid = blk_info[blk[-1,-1]].slice_id
+      if my_sid == up_left_sid:
+        return True
+    return False
+      
+  def up_right_available(blk, blk_info):
+    if blk[-1,blk.dims()[1]+1].exists():
+      my_sid = blk_info[blk[0,0]].slice_id
+      up_right_sid = blk_info[blk[-1,blk.dims()[1]+1]].slice_id
+      if my_sid == up_right_sid:
+        return True
+    return False
+
+  def try_low(Y_mb, Y_rmb, blk_info, cfg):
+    left,up,up_left = IntraPred16x16.left_available(Y_mb, blk_info),\
+                      IntraPred16x16.up_available(Y_mb, blk_info),\
+                      IntraPred16x16.up_left_available(Y_mb, blk_info)
+    if cfg.trace:
+      note('Y_MB: ' + str(Y_mb.dims()) + ' @ ' + str(Y_mb.origin()) + ' has left,up,up_left: ' + str(left) + ',' + str(
+        up) + ',' + str(up_left))
+    best_cost = MAX_INT
+    best_pred = None
+    best_mode = UNKNOWN_MODE
+    local_Y_rmb = Block(Y_rmb)
+    if left and not cfg.skip_16x16_horiz:
+      best_cost,best_mode,best_pred = IntraPred16x16.try_mode(Y_mb, local_Y_rmb, best_cost, best_mode, best_pred,
+                                                         HORIZ_16x16, IntraPred16x16.horizontal_16x16)
+    if up and not cfg.skip_16x16_vert:
+      best_cost,best_mode,best_pred = IntraPred16x16.try_mode(Y_mb, local_Y_rmb, best_cost, best_mode, best_pred,
+                                                         VERT_16x16, IntraPred16x16.vertical_16x16)
+    if up and left and not cfg.skip_16x16_planar:
+      best_cost,best_mode,best_pred = IntraPred16x16.try_mode(Y_mb, local_Y_rmb, best_cost, best_mode, best_pred,
+                                                         PLANAR_16x16, IntraPred16x16.planar_16x16, cfg.bit_depth)
+    # now try the DC modes (only try one of these)
+    if up and left:
+      best_cost,best_mode,best_pred = IntraPred16x16.try_mode(Y_mb, local_Y_rmb, best_cost, best_mode, best_pred,
+                                                         DC_16x16, IntraPred16x16.DC_a_16x16)
+    elif left:
+      best_cost,best_mode,best_pred = IntraPred16x16.try_mode(Y_mb, local_Y_rmb, best_cost, best_mode, best_pred,
+                                                         DC_16x16, IntraPred16x16.DC_b_16x16)
+    elif up:
+      best_cost,best_mode,best_pred = IntraPred16x16.try_mode(Y_mb, local_Y_rmb, best_cost, best_mode, best_pred,
+                                                         DC_16x16, IntraPred16x16.DC_c_16x16)
+    else:
+      # need to store ints, not bytes
+      pred = Y_mb.shallow_cast[int]()
+      IntraPred16x16.DC_d_16x16(pred, cfg.bit_depth)
+      cost = Cost.sad(Y_mb, pred)
+      if cost < best_cost:
+        best_cost = cost
+        best_pred = pred
+        best_mode = DC_16x16
+    residual = int(Y_mb) - best_pred
+    residual.remap(Y_mb)  # need to set the cgrid
+    xform_blks = Partition.grid(residual, 4)
+    DCs = Block(residual[::4, ::4])
+    quant = Block(residual)
+    coeffs = Block(residual)
+    coeff_blks = Partition.grid(coeffs, 4)
+    quant_blks = Partition.grid(quant, 4)
+    for resid, coeff_blk, qblk in zip(xform_blks, coeff_blks, quant_blks):
+      DCT.dct4x4(resid, coeff_blk)
+      # store the DCs for later
+      val = coeff_blk(0)
+      DCs[coeff_blk[0]] = val
+      Quantize.quantize_4x4(coeff_blk, qblk, cfg.qp)
+    Hadamard.hadamard4x4(DCs, DCs)
+    Quantize.quantize_4x4(DCs, DCs, cfg.qp)
+    # now reconstruction
+    Hadamard.ihadamard4x4(DCs, coeffs[::4, ::4])
+    coeff_blks = Partition.grid(coeffs, 4)
+    for cblk, qblk in zip(coeff_blks, quant_blks):
+      Quantize.dequantize_4x4(qblk, cblk, cfg.qp)
+      DCT.idct4x4(cblk, cblk)
+      cblk >>= 6
+    # coeffs now contains the reconstruction of the residual
+    local_Y_rmb[coeffs] = coeffs + best_pred
+    if cfg.trace:
+      note('Y_MB: ' + str(Y_mb.dims()) + ' @ ' + str(Y_mb.origin()) + ' has cost ' + str(best_cost) + ' for mode ' + mode_16x16_to_str(best_mode))
+    return best_cost,best_mode,DCs,quant,local_Y_rmb
+
+  def vertical_16x16(pred, ref_colocated):
+    for i in range(pred.dims()[0]):
+      pred[:,i] = int(ref_colocated(-1,i))
+
+  def horizontal_16x16(pred, ref_colocated):
+    for i in range(pred.dims()[0]):
+      pred[i,:] = int(ref_colocated(i,-1))
+
+  def DC_a_16x16(pred, ref_colocated):
+    s = 16
+    for i in range(pred.dims()[0]):
+      s += int(ref_colocated(-1,i)) + int(ref_colocated(i,-1))
+    s >>= 5    
+    pred[:,:] = s
+
+  def DC_b_16x16(pred, ref_colocated):
+    s = 8
+    for i in range(pred.dims()[0]):
+      s += int(ref_colocated(i,-1))
+    s >>= 4
+    pred[:,:] = s
+
+  def DC_c_16x16(pred, ref_colocated):
+    s = 8
+    for i in range(pred.dims()[0]):
+      s += int(ref_colocated(-1,i))
+    s >>= 4
+    pred[:,:] = s
+
+  def DC_d_16x16(pred, bit_depth):
+    pred[:,:] = 1 << (bit_depth - 1)
+
+  def planar_16x16(pred, ref_colocated, bit_depth):
+    H = 0
+    V = 0
+    for i in range(8):
+      H += (i+1) * (int(ref_colocated(-1,8+i))-int(ref_colocated(-1,i)))   
+      V += (i+1) * (int(ref_colocated(8+i,-1))-int(ref_colocated(i,-1)))
+    a = 16 * (int(ref_colocated(15,-1))+int(ref_colocated(-1,15)))
+    b = (5 * H + 32) >> 6
+    c = (5 * V + 32) >> 6
+    for y in range(16):
+      for x in range(16):
+        clip_val = (a + b * (x - 7) + c * (y - 7) + 16) >> 5
+        pred[y,x] = (clip1y(clip_val, bit_depth))

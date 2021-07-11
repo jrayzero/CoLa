@@ -1,0 +1,125 @@
+from ..cola.frontend.lut import *
+from ..cola.frontend.block import *
+from transforms import DCT
+import math
+
+class Quantize:
+
+  def m4x4():
+    """
+    See Table 7.4 in Richardson's book
+    """
+    return LUT((6, 3),
+               [13107, 5243, 8066,
+                11916, 4660, 7490,
+                10082, 4194, 6554,
+                9362, 3647, 5825,
+                8192, 3355, 5243,
+                7282, 2893, 4559])
+
+  def v4x4():
+    """
+    Standard table 8-315 (section 8.5.9)
+    """
+    return LUT((6,3),
+               [10, 16, 13,
+                11, 18, 14,
+                13, 20, 16,
+                14, 23, 18,
+                16, 25, 20,
+                18, 29, 23])
+
+  def Vi4(QP: int):
+    """
+    See 7.15 in Richardson's book (pg 189)
+    """
+    v = Quantize.v4x4()
+    mod = QP % 6
+    return LUT((4,4),
+               [v(mod,0), v(mod,2), v(mod,0), v(mod,2),
+                v(mod,2), v(mod,1), v(mod,2), v(mod,1),
+                v(mod,0), v(mod,2), v(mod,0), v(mod,2),
+                v(mod,2), v(mod,1), v(mod,2), v(mod,1)])  
+
+  def Mf4(QP: int):
+    """
+    See page 194 in Richardson's book
+    """
+    mod = QP % 6
+    m = Quantize.m4x4()
+    return LUT((4, 4),
+               [m(mod,0), m(mod,2), m(mod,0), m(mod,2),
+                m(mod,2), m(mod,1), m(mod,2), m(mod,1),
+                m(mod,0), m(mod,2), m(mod,0), m(mod,2),
+                m(mod,2), m(mod,1), m(mod,2), m(mod,1)])
+
+  def quantize_4x4(coeffs, QP: int):
+    """
+    See page 195 in Richardson's book (except I don't use adaptive rounding)
+    """
+    Mf4 = Quantize.Mf4(QP)
+    quant = (Mf4 * coeffs) >> (15+QP//6)
+    return quant
+
+  def quantize_4x4(coeffs, quant, QP: int):
+    """
+    Write to quant.
+    See page 195 in Richardson's book (except I don't use adaptive rounding)
+    """
+    Mf4 = Quantize.Mf4(QP)
+    quant[:,:] = (Mf4 * coeffs) >> (15+QP//6)
+
+  def dequantize_4x4(vals, dequant, QP: int):
+    """
+    See 7.2.3.6 in Richardson's book.
+    If you use this function and then run the output through the
+    core inverse transform, make sure to scale all the transform
+    outputs by 1/2^6 and then round the whole thing
+    """
+    v = Quantize.Vi4(QP)
+    dequant[:,:] = (vals * v) << (QP//6)
+
+  def dequantize_4x4(vals, QP: int):
+    """
+    See 7.2.3.6 in Richardson's book.
+    If you use this function and then run the output through the
+    core inverse transform, make sure to scale all the transform
+    outputs by 1/2^6 and then round the whole thing
+    """
+    v = Quantize.Vi4(QP)
+    return (vals * v) << (QP//6)
+
+  def rshift_rnd_sf(x, a):
+    return ((x + (1 << (a - 1))) >> a)
+
+  def quantize_4x4_JM_normal(coeffs, quant, cfg):
+    # This is my adaptation of what JM does. It has some extra stuff in its quant method because
+    # it also wraps in some stuff for prepping for entropy coding, which makes the function unnecessarily
+    # bloated for a simple stupid quantization function. Some of the extra computation is in my corresponding
+    # dequant function.
+    QP = cfg.qp
+    qp_per = cfg.qp_per_matrix[QP]
+    q_bits = 15 + qp_per
+    for _coeff,_q,_scale, in zip(coeffs, quant, cfg.scale_quant_matrix[QP%6,:,:]):
+      coeff = _coeff()
+      scaled_coeff = abs(coeff) * _scale()
+      level = scaled_coeff + cfg.offset_comp[QP//6]
+      level >>= q_bits
+      if coeff < 0:
+        level = -1 * level
+      # here's where there'd be extra stuff from JM. But you want to encode level at this point because it is smaller.
+      # otherwise if you do the rest of the JM stuff and then encode that, you get numbers that are like 200x bigger.
+      _q[0] = level
+
+  def dequantize_4x4_JM_normal(quant, cfg):
+    QP = cfg.qp
+    qp_per = cfg.qp_per_matrix[QP]
+    # some of this may actually be unnecessary, but I just want to match some output from JM
+    for _level,_iscale in zip(quant, cfg.inv_scale_quant_matrix[QP%6,:,:]):
+      level = _level()
+      if level != 0:
+        level = min(level, 2063)  # cap for CAVLC
+        level = Quantize.rshift_rnd_sf((level * _iscale()) << qp_per, 4)
+        _level[0] = level
+      else:
+        _level[0] = 0

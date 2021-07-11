@@ -1,0 +1,28 @@
+Times
+Original
+20.1309
+20.068
+20.6851
+
+With SAD
+16.0964
+16.3005
+15.7597
+
+With SSD
+15.3822
+15.6855
+15.4711
+
+With DCs optimized
+15.0763
+15.0773
+14.9589
+16.2402
+
+With intra except for horizontal and vertical optimized
+13.7717
+13.6046
+13.7944
+
+Left off: figure out how to do the Loop stuff in horiz/vert where it has a constant for one of the dimensions

@@ -1,0 +1,134 @@
+SAMPLE_420 = 0
+SAMPLE_422 = 1
+SAMPLE_444 = 2
+
+YUV = 0
+
+INTRA_16x16 = 0
+INTRA_8x8 = 1
+INTRA_4x4 = 2
+
+# slice_type
+P_SLICE = 0
+B_SLICE = 1
+I_SLICE = 2
+SP_SLICE = 3
+SI_SLICE = 4
+# the alls are the special things listed in table 7-6
+P_SLICE_ALL = 5
+B_SLICE_ALL = 6
+I_SLICE_ALL = 7
+SP_SLICE_ALL = 8
+SI_SLICE_ALL = 9
+
+# mb_type
+I_NxN = 0
+I_16x16_0_0_0 = 1
+I_16x16_1_0_0 = 2
+I_16x16_2_0_0 = 3
+I_16x16_3_0_0 = 4
+I_16x16_0_1_0 = 5
+I_16x16_1_1_0 = 6
+I_16x16_2_1_0 = 7
+I_16x16_3_1_0 = 8
+I_16x16_0_2_0 = 9
+I_16x16_1_2_0 = 10
+I_16x16_2_2_0 = 11
+I_16x16_3_2_0 = 12
+I_16x16_0_0_1 = 13
+I_16x16_1_0_1 = 14
+I_16x16_2_0_1 = 15
+I_16x16_3_0_1 = 16
+I_16x16_0_1_1 = 17
+I_16x16_1_1_1 = 18
+I_16x16_2_1_1 = 19
+I_16x16_3_1_1 = 20
+I_16x16_0_2_1 = 21
+I_16x16_1_2_1 = 22
+I_16x16_2_2_1 = 23
+I_16x16_3_2_1 = 24
+I_PCM = 25
+
+P_L0_16x16 = 0
+P_L0_L0_16x8 = 1
+P_L0_L0_8x16 = 2
+P_8x8 = 3
+P_8x8ref0 = 4
+P_SKIP = -1
+
+B_Direct_16x16 = 0
+B_L0_16x16 = 1
+B_L1_16x16 = 2
+B_Bi_16x16 = 3
+B_L0_L0_16x8 = 4
+B_L0_L0_8x16 = 5
+B_L1_L1_16x8 = 6
+B_L1_L1_8x16 = 7
+B_L0_L1_16x8 = 8
+B_L0_L1_8x16 = 9
+B_L1_L0_16x8 = 10
+B_L1_L0_8x16 = 11
+B_L0_Bi_16x8 = 12
+B_L0_Bi_8x16 = 13
+B_L1_Bi_16x8 = 14
+B_L1_Bi_8x16 = 15
+B_Bi_L0_16x8 = 16
+B_Bi_L0_8x16 = 17
+B_Bi_L1_16x8 = 18
+B_Bi_L1_8x16 = 19
+B_Bi_Bi_16x8 = 20
+B_Bi_Bi_8x16 = 21
+B_8x8 = 22
+B_SKIP = -1
+
+MAX_INT = 9223372036854775807
+
+# pred modes
+UNKNOWN_MODE = -1
+VERT_16x16 = 0
+HORIZ_16x16 = 1
+DC_16x16 = 2
+PLANAR_16x16 = 3
+VERT_4x4 = 0
+HORIZ_4x4 = 1
+DC_4x4 = 2
+DIAG_DOWN_LEFT_4x4 = 3
+DIAG_DOWN_RIGHT_4x4 = 4
+VERT_RIGHT_4x4 = 5
+VERT_LEFT_4x4 = 6
+HORIZ_UP_4x4 = 7
+HORIZ_DOWN_4x4 = 8
+
+def mode_16x16_to_str(mode):
+  if mode == UNKNOWN_MODE:
+    return 'UNKNOWN_MODE'
+  elif mode == VERT_16x16:
+    return 'VERT_16x16'
+  elif mode == HORIZ_16x16:
+    return 'HORIZ_16x16'
+  elif mode == DC_16x16:
+    return 'DC_16x16'
+  elif mode == PLANAR_16x16:
+    return 'PLANAR_16x16'
+
+def mode_4x4_to_str(mode):
+  if mode == VERT_4x4:
+    return 'VERT_4X4'
+  elif mode == HORIZ_4x4:
+    return 'HORIZ_4x4'
+  elif mode == DC_4x4:
+    return 'DC_4x4'
+  elif mode == DIAG_DOWN_LEFT_4x4:
+    return 'DIAG_DOWN_LEFT_4x4'
+  elif mode == DIAG_DOWN_RIGHT_4x4:
+    return 'DIAG_DOWN_RIGHT_4x4'
+  elif mode == VERT_RIGHT_4x4:
+    return 'VERT_RIGHT_4x4'
+  elif mode == VERT_LEFT_4x4:
+    return 'VERT_LEFT_4x4'
+  elif mode == HORIZ_UP_4x4:
+    return 'HORIZ_UP_4x4'
+  elif mode == HORIZ_DOWN_4x4:
+    return 'HORIZ_DOWN_4x4'
+  else:
+    return ''

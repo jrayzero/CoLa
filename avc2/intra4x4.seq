@@ -1,0 +1,443 @@
+from ..cola.frontend.block import *
+from ..cola.frontend.flagtree import *
+from ..cola.frontend.constants import MAX_INT_32
+from partition import *
+from utils import *
+from constants import *
+from cost import *
+from structures import *
+from transforms import *
+from quantize import *
+
+class IntraPred4x4:
+
+  def try_mode(data, recons, cur_best_cost, cur_best_mode, cur_best_pred, mode_id, mode_func, *args):
+    pred = data.shallow_cast[int]()
+    mode_func(pred, recons[pred], *args)
+    cost = Cost.sad_opt(data, pred)
+    if cost < cur_best_cost:
+      return cost, mode_id, Optional(pred)
+    else:
+      return cur_best_cost, cur_best_mode, cur_best_pred
+
+  # Availability means: data exists (wrt bounds and traversal order within a partition) and has the same slice. The traversal order
+  # part is currently satisfied by checking the mode id in mode_tree. If it is -1, that block hasn't been predicted
+  # yet. But this isn't very generalizable able (see todo)
+  # TODO need to be able to check existence wrt a traversal order within a partition
+
+  def left_available(blk, blk_info, mode_tree):
+    available_wrt_part_order = mode_tree.exists(blk[0, -1]) and mode_tree[blk[0, -1]].mode != UNKNOWN_MODE
+    if blk[0,-1].exists() and available_wrt_part_order:
+      my_sid = blk_info[blk[0,0]].slice_id
+      left_sid = blk_info[blk[0,-1]].slice_id
+      if my_sid == left_sid:
+        return True
+    return False
+
+  def up_available(blk, blk_info, mode_tree):
+    available_wrt_part_order = mode_tree.exists(blk[-1,0]) and mode_tree[blk[-1,0]].mode != UNKNOWN_MODE
+    if blk[-1,0].exists() and available_wrt_part_order:
+      my_sid = blk_info[blk[0,0]].slice_id
+      up_sid = blk_info[blk[-1,0]].slice_id
+      if my_sid == up_sid:
+        return True
+    return False
+
+  def up_left_available(blk, blk_info, mode_tree):
+    available_wrt_part_order = mode_tree.exists(blk[-1,-1]) and mode_tree[blk[-1,-1]].mode != UNKNOWN_MODE
+    if blk[-1,-1].exists() and available_wrt_part_order:
+      my_sid = blk_info[blk[0,0]].slice_id
+      up_left_sid = blk_info[blk[-1,-1]].slice_id
+      if my_sid == up_left_sid:
+        return True
+    return False
+      
+  def up_right_available(blk, blk_info, mode_tree):
+    available_wrt_part_order = mode_tree.exists(blk[-1,blk.dims()[1]+1]) and \
+                               mode_tree[blk[-1,blk.dims()[1]+1]].mode != UNKNOWN_MODE
+    if blk[-1,blk.dims()[1]+1].exists() and available_wrt_part_order:
+      my_sid = blk_info[blk[0,0]].slice_id
+      up_right_sid = blk_info[blk[-1,blk.dims()[1]+1]].slice_id
+      if my_sid == up_right_sid:
+        return True
+    return False
+
+  def try_low(Y_mb, Y_rmb, blk_info, cfg):
+    """
+    Low-complexity mode optimization.
+    Computes all possible modes and selects the one that produces the lowest SAD cost per 4x4 block.
+    """
+    # store best mode for each of the 16 4x4 blocks
+    best_costs = [MAX_INT] * 16
+    full_pred = Y_mb.shallow_cast[int]()
+    Y_4x4 = Partition.grid_quadtree(Y_mb, 2)[0]
+    mode_tree = Y_4x4.to_flagtree[BlkInfo]()
+    quant = Y_mb.shallow_cast[int]() # holds output of quantization
+    idx = 0
+    # setup the reference data based on prior reconstructions (not all of this data will necessarily be valid, but we make a big enough block
+    # pretending that it all is). The valid data will be selected based on the per-4x4 block availability.
+    local_Y_recons = Block(Y_rmb[-1:,-1:20])
+    local_Y_recons[:,:] = 0
+    # check existence of Y_rmb instead of local_Y_recons since local_Y_recons has its own buffer so we would always be out
+    if Y_rmb[-1,-1].exists():
+      local_Y_recons[Y_rmb[-1,-1]] = Y_rmb[-1,-1]
+    if Y_rmb[-1,0].exists():
+      # row above
+      local_Y_recons[Y_rmb[-1,:]] = Y_rmb[-1,:]
+    if Y_rmb[0,-1].exists():
+      # column left
+      local_Y_recons[Y_rmb[:,-1]] = Y_rmb[:,-1]
+    if Y_rmb[-1,16].exists(): # need this for the upper right 4x4 block if it accesses up to the right
+      local_Y_recons[Y_rmb[-1,16:20]] = Y_rmb[-1,16:20]
+    # co-locate the macroblock in the whole reconstruction block
+    local_Y_rmb = local_Y_recons[Y_mb]
+    for y_4x4 in Y_4x4:
+      # Determine availability
+      left, up, up_left, up_right = IntraPred4x4.left_available(y_4x4, blk_info, mode_tree), \
+                                    IntraPred4x4.up_available(y_4x4, blk_info, mode_tree), \
+                                    IntraPred4x4.up_left_available(y_4x4, blk_info, mode_tree), \
+                                    IntraPred4x4.up_right_available(y_4x4, blk_info, mode_tree)
+      # Try out all the possible modes
+      local_best_pred = None
+      local_best_mode = UNKNOWN_MODE
+      if left:
+        best_costs[idx],local_best_mode,local_best_pred = \
+          IntraPred4x4.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             HORIZ_4x4, IntraPred4x4.horizontal_4x4)
+        best_costs[idx],local_best_mode,local_best_pred = \
+          IntraPred4x4.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             HORIZ_UP_4x4, IntraPred4x4.horizontal_up_4x4_opt)
+      if up:
+        best_costs[idx],local_best_mode,local_best_pred = \
+          IntraPred4x4.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             VERT_4x4, IntraPred4x4.vertical_4x4)
+      if up and up_right:
+        best_costs[idx], local_best_mode, local_best_pred = \
+          IntraPred4x4.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             DIAG_DOWN_LEFT_4x4, IntraPred4x4.diag_down_left_4x4_opt)
+        best_costs[idx],local_best_mode,local_best_pred = \
+          IntraPred4x4.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             VERT_LEFT_4x4, IntraPred4x4.vertical_left_4x4_opt)
+      if up and left and up_left:
+        pred = y_4x4.shallow_cast[int]()
+        best_costs[idx],local_best_mode,local_best_pred = \
+          IntraPred4x4.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             DIAG_DOWN_RIGHT_4x4, IntraPred4x4.diag_down_right_4x4_opt)
+        best_costs[idx],local_best_mode,local_best_pred = \
+          IntraPred4x4.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             VERT_RIGHT_4x4, IntraPred4x4.vertical_right_4x4_opt)
+        best_costs[idx],local_best_mode,local_best_pred = \
+          IntraPred4x4.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             HORIZ_DOWN_4x4, IntraPred4x4.horizontal_down_4x4_opt)
+      # now try one of the DC modes (can only use one)
+      if up and left:
+        best_costs[idx],local_best_mode,local_best_pred = \
+          IntraPred4x4.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             DC_4x4, IntraPred4x4.DC_a_4x4_opt)
+      elif left:
+        best_costs[idx],local_best_mode,local_best_pred = \
+          IntraPred4x4.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             DC_4x4, IntraPred4x4.DC_b_4x4_opt)
+      elif up:
+        best_costs[idx],local_best_mode,local_best_pred = \
+          IntraPred4x4.try_mode(y_4x4, local_Y_rmb, best_costs[idx], local_best_mode, local_best_pred,
+                             DC_4x4, IntraPred4x4.DC_c_4x4_opt)
+      else:
+        # This one is different b/c the mode function takes a different argument
+        pred = y_4x4.shallow_cast[int]()
+        IntraPred4x4.DC_d_4x4_opt(pred, cfg.bit_depth)
+        cost = Cost.sad_opt(y_4x4, pred)
+        if cost < best_costs[idx]:
+          best_costs[idx] = cost
+          local_best_pred = pred
+          local_best_mode = DC_4x4
+      if cfg.trace:
+        note(
+          'y_4x4: ' + str(y_4x4.dims()) + ' @ ' + str(y_4x4.origin()) + ' has cost ' + str(best_costs[idx]) + ' for mode ' + mode_4x4_to_str(local_best_mode))
+      full_pred[~local_best_pred] = ~local_best_pred
+      mode_tree[~local_best_pred].mode = local_best_mode
+      idx += 1
+      # at this point, we have the best mode. Now we need to run it through the rest of the pipeline
+      # so we can create the local reconstruction for it.
+      residual = int(y_4x4) - ~local_best_pred
+      residual.remap(y_4x4)
+      coeffs = Block(residual)
+      # forward (save quantized coeffs for later entropy coding)
+      DCT.dct4x4(residual, coeffs)
+      Quantize.quantize_4x4_JM_normal(coeffs, quant[coeffs], cfg)
+      # reconstruction
+      local_Y_rmb[coeffs] = quant[coeffs]
+      Quantize.dequantize_4x4_JM_normal(local_Y_rmb[coeffs], cfg)
+      DCT.idct4x4(local_Y_rmb[coeffs], local_Y_rmb[coeffs])
+      # 6=DQ_BITS
+      # TODO elementwise min so don't need loop for this
+      local_Y_rmb[coeffs] = Quantize.rshift_rnd_sf(local_Y_rmb[coeffs], 6) + ~local_best_pred
+      for c in local_Y_rmb[coeffs]:
+        c[0] = min(c(), 255)
+    # compute the total cost for the whole 16x16 macroblock
+    total_cost = 0
+    for cost in best_costs:
+      total_cost += cost
+    mode_tree.flag.intra_pred_type = INTRA_4x4
+    return total_cost,mode_tree,quant,local_Y_rmb
+
+  def vertical_4x4(pred, ref_colocated):
+    for i in range(4):
+      pred[:,i] = int(ref_colocated(-1,i))      
+
+  def horizontal_4x4(pred, ref_colocated):
+    for i in range(4):
+      pred[i,:] = int(ref_colocated(i,-1))
+
+  def DC_a_4x4(pred, ref_colocated):
+    s = 4
+    s += int(ref_colocated(-1,0)) + int(ref_colocated(-1,1)) + int(ref_colocated(-1,2)) + int(ref_colocated(-1,3))
+    s += int(ref_colocated(0,-1)) + int(ref_colocated(1,-1)) + int(ref_colocated(2,-1)) + int(ref_colocated(3,-1))
+    pred[:,:] = s >> 3
+
+  def DC_b_4x4(pred, ref_colocated):
+    s = 2 + int(ref_colocated(0,-1)) + int(ref_colocated(1,-1)) + int(ref_colocated(2,-1)) + int(ref_colocated(3,-1))
+    pred[:,:] = s >> 2
+
+  def DC_c_4x4(pred, ref_colocated):
+    s = 2 + int(ref_colocated(-1,0)) + int(ref_colocated(-1,1)) + int(ref_colocated(-1,2)) + int(ref_colocated(-1,3))
+    pred[:,:] = s >> 2
+
+  def DC_d_4x4(pred, bit_depth):
+    pred[:,:] = 1 << (bit_depth - 1)
+
+  def diag_down_left_4x4(pred, ref_colocated):
+    for y in range(4):
+      for x in range(4):
+        if y == 3 and x == 3:
+          pred[3,3] = (int(ref_colocated(-1,6)) + 3 * int(ref_colocated(-1,7)) + 2) >> 2
+        else:
+          pred[y,x] = (int(ref_colocated(-1,x+y)) + 2 * int(ref_colocated(-1,x+y+1)) + int(ref_colocated(-1,x+y+2)) + 2) >> 2
+
+  def diag_down_right_4x4(pred, ref_colocated):
+    for y in range(4):
+      for x in range(4):
+        if x > y:
+          pred[y,x] = (int(ref_colocated(-1,x-y-2)) + 2*int(ref_colocated(-1,x-y-1)) + int(ref_colocated(-1,x-y)) + 2) >> 2
+        elif x < y:
+          pred[y,x] = (int(ref_colocated(y-x-2,-1)) + 2*int(ref_colocated(y-x-1,-1)) + int(ref_colocated(y-x,-1)) + 2) >> 2
+        else:
+          pred[y,x] = (int(ref_colocated(-1,0)) + 2 * int(ref_colocated(-1,-1)) + int(ref_colocated(0,-1)) + 2) >> 2
+
+  def vertical_right_4x4(pred, ref_colocated):
+    for y in range(4):
+      for x in range(4):
+        zVR = 2 * x - y
+        if zVR == -1:
+          pred[y,x] = (int(ref_colocated(0,-1)) + 2 * int(ref_colocated(-1,-1)) + int(ref_colocated(-1,0)) + 2) >> 2
+        elif zVR == -2 or zVR == -3:
+          pred[y,x] = (int(ref_colocated(y-1,-1)) + 2*int(ref_colocated(y-2,-1)) + int(ref_colocated(y-3,-1)) + 2) >> 2
+        elif zVR % 2 == 0:
+          pred[y,x] = (int(ref_colocated(-1,x-(y>>1)-1)) + int(ref_colocated(-1, x-(y>>1))) + 1) >> 1
+        else:
+          pred[y,x] = (int(ref_colocated(-1,x-(y>>1)-2)) + 2*int(ref_colocated(-1,x-(y>>1)-1)) + int(ref_colocated(-1,x-(y>>1)))) >> 2
+
+  def horizontal_down_4x4(pred, ref_colocated):
+    for y in range(4):
+      for x in range(4):
+        zHD = 2 * y - x
+        if zHD == -1:
+          pred[y,x] = (int(ref_colocated(y-(x>>1),-1)) + 2*int(ref_colocated(y-(x>>1),-1)) + int(ref_colocated(y-(x>>1),-1)) + 1) >> 1
+        elif zHD == -2 or zHD == -3:
+          pred[y,x] = (int(ref_colocated(-1,x-1)) + 2 * int(ref_colocated(-1,x-2)) + int(ref_colocated(-1,x-3)) + 2) >> 2
+        elif zHD % 2 == 0:
+          pred[y,x] = (int(ref_colocated(y-(x>>1),-1)) + int(ref_colocated(y-(x>>1),-1)) + 1) >> 1
+        else:
+          pred[y,x] = (int(ref_colocated(y-(x>>1)-2,-1)) + int(ref_colocated(y-(x>>1)-1,-1)) + int(ref_colocated(y-(x>>1),-1)) + 2) >> 2
+
+  def vertical_left_4x4(pred, ref_colocated):
+    for y in range(4):
+      for x in range(4):
+        if y == 0 or y == 2:
+          pred[y,x] = (int(ref_colocated(-1,x+(y>>1))) + int(ref_colocated(-1,x+(y>>1)+1)) + 1) >> 1
+        else:
+          pred[y,x] = (int(ref_colocated(-1,x+(y>>1))) + 2*int(ref_colocated(-1,x+(y>>1)+1)) + int(ref_colocated(-1,x+(y>>1)+2)) + 2) >> 1
+
+  def horizontal_up_4x4(pred, ref_colocated):
+    for y in range(4):
+      for x in range(4):
+        zHU = x + 2 * y
+        if zHU > 5:
+          pred[y,x] = int(ref_colocated(3,-1))
+        elif zHU == 5:
+          pred[y,x] = (int(ref_colocated(2,-1)) + 3*int(ref_colocated(3,-1)) + 2) >> 2
+        elif zHU == 1 or zHU == 3:
+          pred[y,x] = (int(ref_colocated(y+(x>>1),-1)) + 2*int(ref_colocated(y+(x>>1)+1,-1)) + int(ref_colocated(y+(x>>1)+2,-1)) + 2) >> 2
+        else:
+          pred[y,x] = (int(ref_colocated(y+(x>>1),-1)) + int(ref_colocated(y+(x>>1)+1,-1)) + 1) >> 1
+          
+  def vertical_4x4_opt(pred, ref_colocated):
+    # notice: i is the loop iterator so should be able to take advantage of that
+    for i in range(4):
+      pred[:,i] = int(ref_colocated(-1,i))      
+
+  def horizontal_4x4_opt(pred, ref_colocated):
+    for i in range(4):
+      pred[i,:] = int(ref_colocated(i,-1))
+
+  def DC_a_4x4_opt(pred, ref_colocated):
+    s = 4
+    s += int(ref_colocated(-1,0)) + int(ref_colocated(-1,1)) + int(ref_colocated(-1,2)) + int(ref_colocated(-1,3))
+    s += int(ref_colocated(0,-1)) + int(ref_colocated(1,-1)) + int(ref_colocated(2,-1)) + int(ref_colocated(3,-1))
+    start = pred.base.origin_relative_to(pred.base._buffer_owner)
+    start_lidx = start[0] * pred.base._buffer_owner.dims()[1] + start[1]
+    stride0 = pred.cgrid_mapping()[0][2]
+    stride1 = pred.cgrid_mapping()[1][2]
+    idx0_incr = pred.base._buffer_owner.dims()[1] * stride0
+    idx1_incr = stride1
+    idx0_init = -idx0_incr
+    idx1_init = -idx1_incr
+    idx0 = idx0_init
+    idx1 = idx1_init
+    for i in range(pred.dims()[0]):
+      idx0 += idx0_incr      
+      for j in range(pred.dims()[1]):
+        idx1 += idx1_incr
+        lidx = idx0 + idx1 + start_lidx
+        pred.base._buffer[lidx] = s >> 3
+      idx1 = idx1_init
+    idx0 = idx0_init
+
+  def DC_b_4x4_opt(pred, ref_colocated):
+    s = 2 + int(ref_colocated(0,-1)) + int(ref_colocated(1,-1)) + int(ref_colocated(2,-1)) + int(ref_colocated(3,-1))
+    start = pred.base.origin_relative_to(pred.base._buffer_owner)
+    start_lidx = start[0] * pred.base._buffer_owner.dims()[1] + start[1]
+    stride0 = pred.cgrid_mapping()[0][2]
+    stride1 = pred.cgrid_mapping()[1][2]
+    idx0_incr = pred.base._buffer_owner.dims()[1] * stride0
+    idx1_incr = stride1
+    idx0_init = -idx0_incr
+    idx1_init = -idx1_incr
+    idx0 = idx0_init
+    idx1 = idx1_init
+    for i in range(pred.dims()[0]):
+      idx0 += idx0_incr      
+      for j in range(pred.dims()[1]):
+        idx1 += idx1_incr
+        lidx = idx0 + idx1 + start_lidx
+        pred.base._buffer[lidx] = s >> 2
+      idx1 = idx1_init
+    idx0 = idx0_init
+
+  def DC_c_4x4_opt(pred, ref_colocated):
+    s = 2 + int(ref_colocated(-1,0)) + int(ref_colocated(-1,1)) + int(ref_colocated(-1,2)) + int(ref_colocated(-1,3))
+    start = pred.base.origin_relative_to(pred.base._buffer_owner)
+    start_lidx = start[0] * pred.base._buffer_owner.dims()[1] + start[1]
+    stride0 = pred.cgrid_mapping()[0][2]
+    stride1 = pred.cgrid_mapping()[1][2]
+    idx0_incr = pred.base._buffer_owner.dims()[1] * stride0
+    idx1_incr = stride1
+    idx0_init = -idx0_incr
+    idx1_init = -idx1_incr
+    idx0 = idx0_init
+    idx1 = idx1_init
+    for i in range(pred.dims()[0]):
+      idx0 += idx0_incr      
+      for j in range(pred.dims()[1]):
+        idx1 += idx1_incr
+        lidx = idx0 + idx1 + start_lidx
+        pred.base._buffer[lidx] = s >> 2
+      idx1 = idx1_init
+    idx0 = idx0_init
+
+  def DC_d_4x4_opt(pred, bit_depth):
+    start = pred.base.origin_relative_to(pred.base._buffer_owner)
+    start_lidx = start[0] * pred.base._buffer_owner.dims()[1] + start[1]
+    stride0 = pred.cgrid_mapping()[0][2]
+    stride1 = pred.cgrid_mapping()[1][2]
+    idx0_incr = pred.base._buffer_owner.dims()[1] * stride0
+    idx1_incr = stride1
+    idx0_init = -idx0_incr
+    idx1_init = -idx1_incr
+    idx0 = idx0_init
+    idx1 = idx1_init
+    for i in range(pred.dims()[0]):
+      idx0 += idx0_incr      
+      for j in range(pred.dims()[1]):
+        idx1 += idx1_incr
+        lidx = idx0 + idx1 + start_lidx
+        pred.base._buffer[lidx] = 1 << (bit_depth - 1)
+      idx1 = idx1_init
+    idx0 = idx0_init
+
+  def diag_down_left_4x4_opt(pred, ref_colocated):
+    start = pred.base.origin_relative_to(pred.base._buffer_owner)
+    start_lidx = start[0] * pred.base._buffer_owner.dims()[1] + start[1]
+    for y in range(4):
+      for x in range(4):
+        if y == 3 and x == 3:
+          pred.base._buffer[start_lidx + 3 * pred.base._buffer_owner.dims()[1] + 3] = (int(ref_colocated(-1,6)) + 3 * int(ref_colocated(-1,7)) + 2) >> 2
+        else:
+          pred.base._buffer[start_lidx + y * pred.base._buffer_owner.dims()[1] + x] = (int(ref_colocated(-1,x+y)) + 2 * int(ref_colocated(-1,x+y+1)) + int(ref_colocated(-1,x+y+2)) + 2) >> 2
+
+  def diag_down_right_4x4_opt(pred, ref_colocated):
+    start = pred.base.origin_relative_to(pred.base._buffer_owner)
+    start_lidx = start[0] * pred.base._buffer_owner.dims()[1] + start[1]
+    for y in range(4):
+      for x in range(4):
+        if x > y:
+          pred.base._buffer[start_lidx + y * pred.base._buffer_owner.dims()[1] + x] = (int(ref_colocated(-1,x-y-2)) + 2*int(ref_colocated(-1,x-y-1)) + int(ref_colocated(-1,x-y)) + 2) >> 2
+        elif x < y:
+          pred.base._buffer[start_lidx + y * pred.base._buffer_owner.dims()[1] + x] = (int(ref_colocated(y-x-2,-1)) + 2*int(ref_colocated(y-x-1,-1)) + int(ref_colocated(y-x,-1)) + 2) >> 2
+        else:
+          pred.base._buffer[start_lidx + y * pred.base._buffer_owner.dims()[1] + x] = (int(ref_colocated(-1,0)) + 2 * int(ref_colocated(-1,-1)) + int(ref_colocated(0,-1)) + 2) >> 2
+
+  def vertical_right_4x4_opt(pred, ref_colocated):
+    start = pred.base.origin_relative_to(pred.base._buffer_owner)
+    start_lidx = start[0] * pred.base._buffer_owner.dims()[1] + start[1]
+    for y in range(4):
+      for x in range(4):
+        zVR = 2 * x - y
+        if zVR == -1:
+          pred.base._buffer[start_lidx + y * pred.base._buffer_owner.dims()[1] + x] = (int(ref_colocated(0,-1)) + 2 * int(ref_colocated(-1,-1)) + int(ref_colocated(-1,0)) + 2) >> 2
+        elif zVR == -2 or zVR == -3:
+          pred.base._buffer[start_lidx + y * pred.base._buffer_owner.dims()[1] + x] = (int(ref_colocated(y-1,-1)) + 2*int(ref_colocated(y-2,-1)) + int(ref_colocated(y-3,-1)) + 2) >> 2
+        elif zVR % 2 == 0:
+          pred.base._buffer[start_lidx + y * pred.base._buffer_owner.dims()[1] + x] = (int(ref_colocated(-1,x-(y>>1)-1)) + int(ref_colocated(-1, x-(y>>1))) + 1) >> 1
+        else:
+          pred.base._buffer[start_lidx + y * pred.base._buffer_owner.dims()[1] + x] = (int(ref_colocated(-1,x-(y>>1)-2)) + 2*int(ref_colocated(-1,x-(y>>1)-1)) + int(ref_colocated(-1,x-(y>>1)))) >> 2
+
+  def horizontal_down_4x4_opt(pred, ref_colocated):
+    start = pred.base.origin_relative_to(pred.base._buffer_owner)
+    start_lidx = start[0] * pred.base._buffer_owner.dims()[1] + start[1]
+    for y in range(4):
+      for x in range(4):
+        zHD = 2 * y - x
+        if zHD == -1:
+          pred.base._buffer[start_lidx + y * pred.base._buffer_owner.dims()[1] + x] = (int(ref_colocated(y-(x>>1),-1)) + 2*int(ref_colocated(y-(x>>1),-1)) + int(ref_colocated(y-(x>>1),-1)) + 1) >> 1
+        elif zHD == -2 or zHD == -3:
+          pred.base._buffer[start_lidx + y * pred.base._buffer_owner.dims()[1] + x] = (int(ref_colocated(-1,x-1)) + 2 * int(ref_colocated(-1,x-2)) + int(ref_colocated(-1,x-3)) + 2) >> 2
+        elif zHD % 2 == 0:
+          pred.base._buffer[start_lidx + y * pred.base._buffer_owner.dims()[1] + x] = (int(ref_colocated(y-(x>>1),-1)) + int(ref_colocated(y-(x>>1),-1)) + 1) >> 1
+        else:
+          pred.base._buffer[start_lidx + y * pred.base._buffer_owner.dims()[1] + x] = (int(ref_colocated(y-(x>>1)-2,-1)) + int(ref_colocated(y-(x>>1)-1,-1)) + int(ref_colocated(y-(x>>1),-1)) + 2) >> 2
+
+  def vertical_left_4x4_opt(pred, ref_colocated):
+    start = pred.base.origin_relative_to(pred.base._buffer_owner)
+    start_lidx = start[0] * pred.base._buffer_owner.dims()[1] + start[1]
+    for y in range(4):
+      for x in range(4):
+        if y == 0 or y == 2:
+          pred.base._buffer[start_lidx + y * pred.base._buffer_owner.dims()[1] + x] = (int(ref_colocated(-1,x+(y>>1))) + int(ref_colocated(-1,x+(y>>1)+1)) + 1) >> 1
+        else:
+          pred.base._buffer[start_lidx + y * pred.base._buffer_owner.dims()[1] + x] = (int(ref_colocated(-1,x+(y>>1))) + 2*int(ref_colocated(-1,x+(y>>1)+1)) + int(ref_colocated(-1,x+(y>>1)+2)) + 2) >> 1
+
+  def horizontal_up_4x4_opt(pred, ref_colocated):
+    start = pred.base.origin_relative_to(pred.base._buffer_owner)
+    start_lidx = start[0] * pred.base._buffer_owner.dims()[1] + start[1]
+    for y in range(4):
+      for x in range(4):
+        zHU = x + 2 * y
+        if zHU > 5:
+          pred.base._buffer[start_lidx + y * pred.base._buffer_owner.dims()[1] + x] = int(ref_colocated(3,-1))
+        elif zHU == 5:
+          pred.base._buffer[start_lidx + y * pred.base._buffer_owner.dims()[1] + x] = (int(ref_colocated(2,-1)) + 3*int(ref_colocated(3,-1)) + 2) >> 2
+        elif zHU == 1 or zHU == 3:
+          pred.base._buffer[start_lidx + y * pred.base._buffer_owner.dims()[1] + x] = (int(ref_colocated(y+(x>>1),-1)) + 2*int(ref_colocated(y+(x>>1)+1,-1)) + int(ref_colocated(y+(x>>1)+2,-1)) + 2) >> 2
+        else:
+          pred.base._buffer[start_lidx + y * pred.base._buffer_owner.dims()[1] + x] = (int(ref_colocated(y+(x>>1),-1)) + int(ref_colocated(y+(x>>1)+1,-1)) + 1) >> 1

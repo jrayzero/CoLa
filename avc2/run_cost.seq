@@ -1,0 +1,26 @@
+from ..cola.frontend.block import *
+from ..cola.frontend.error import *
+from cost import *
+import sys
+
+iters = 100 if len(sys.argv) == 1 else int(sys.argv[1])
+
+actual = Block.make((4,4), [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15])
+estimate = Block.make((4,4), [10,29,48,0,2,94,58,1,5,10,34,72,99,16,2,40])
+
+total_cost = 0
+start = _C.seq_time_monotonic()
+for i in range(iters):
+    total_cost += Cost.sad_opt(actual,estimate)
+stop = _C.seq_time_monotonic()
+print (stop-start)/1e9
+
+total_cost2 = 0
+start = _C.seq_time_monotonic()
+for i in range(iters):
+    total_cost2 += Cost.sad(actual,estimate)
+stop = _C.seq_time_monotonic()
+print (stop-start)/1e9
+
+if total_cost != total_cost2:
+    raise ColaError()

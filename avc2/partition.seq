@@ -1,0 +1,40 @@
+from ..cola.frontend.ptree import *
+
+# LIBRARY
+
+# TODO use shorthand notation once available in Codon
+
+class Partition:
+
+  def row_split(node, sz: int):
+    """
+    Split up into individual rows.
+    """
+    for r in range(0,node.dims()[0],sz):
+      yield node[r:r+sz,:]
+
+  def col_split(node, sz: int):
+    """
+    Split up into individual columns.
+    """
+    for c in range(0, node.dims()[1],sz):
+      yield node[:,c:c+sz]
+
+  def grid(root, blk_height: int, blk_width: int):
+    return PTree(True, root, [PTree(True, r, [PTree(c) for c in Partition.col_split(r,blk_width)]) for r in Partition.row_split(root,blk_height)])[0]
+
+  def grid(root, sz: int):
+    return PTree(True, root, [PTree(True, r, [PTree(c) for c in Partition.col_split(r,sz)]) for r in Partition.row_split(root,sz)])[0]
+    
+  def grid_quadtree(root, levels: int):
+    # levels = how many times to split
+    if levels == 0:
+      return PTree(root)
+    for _ in range(levels):
+      sz = root.dims()[0] // 2
+      q0,q1,q2,q3 = root[:sz,:sz],root[:sz,sz:],root[sz:,:sz],root[sz:,sz:]
+      q0p = Partition.grid_quadtree(q0, levels - 1)
+      q1p = Partition.grid_quadtree(q1, levels - 1)
+      q2p = Partition.grid_quadtree(q2, levels - 1)
+      q3p = Partition.grid_quadtree(q3, levels - 1)
+      return PTree(True, root, [q0p, q1p, q2p, q3p])

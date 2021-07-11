@@ -1,0 +1,136 @@
+from ..cola.frontend.block import *
+from transforms import Hadamard
+
+import math
+# https://www.intechopen.com/books/multimedia/bit-rate-estimation-for-cost-function-of-h-264-avc
+# https://link.springer.com/content/pdf/10.1007/s11760-011-0267-z.pdf
+class Cost:
+
+  def sad(actual: int, estimate: int) -> int:
+    return abs(actual-estimate)
+
+  def sad(actual, estimate):
+    cost = 0
+    for a,e in zip(actual,estimate):
+      cost += abs(a()-e())
+    return cost
+
+  def sad_opt(actual, estimate) -> int:
+    cost = 0
+    if actual.dims() != estimate.dims():
+      for r,p in zip(actual,estimate):
+        cost += abs(r()-p())
+    else:
+      actual_start = actual.base.origin_relative_to(actual.base._buffer_owner)
+      actual_start_lidx = actual_start[0] * actual.base._buffer_owner.dims()[1] + \
+                          actual_start[1]
+      estimate_start = estimate.base.origin_relative_to(estimate.base._buffer_owner)
+      estimate_start_lidx = estimate_start[0] * estimate.base._buffer_owner.dims()[1] + \
+                            estimate_start[1]
+      astride0 = actual.cgrid_mapping()[0][2]
+      astride1 = actual.cgrid_mapping()[1][2]
+      estride0 = estimate.cgrid_mapping()[0][2]
+      estride1 = estimate.cgrid_mapping()[1][2]
+
+      aidx0_incr = actual.base._buffer_owner.dims()[1] * astride0
+      aidx1_incr = astride1
+      aidx0_init = -aidx0_incr
+      aidx1_init = -aidx1_incr
+      aidx0 = aidx0_init
+      aidx1 = aidx1_init
+
+      eidx0_incr = estimate.base._buffer_owner.dims()[1] * estride0
+      eidx1_incr = estride1
+      eidx0_init = -eidx0_incr
+      eidx1_init = -eidx1_incr
+      eidx0 = eidx0_init
+      eidx1 = eidx1_init
+
+      for i in range(actual.dims()[0]):
+        aidx0 += aidx0_incr
+        eidx0 += eidx0_incr
+        for j in range(actual.dims()[1]):
+          aidx1 += aidx1_incr
+          eidx1 += eidx1_incr
+          alidx = aidx0 + aidx1 + actual_start_lidx
+          elidx = eidx0 + eidx1 + estimate_start_lidx
+          a = actual.base._buffer[alidx]
+          e = estimate.base._buffer[elidx]
+          cost += abs(a-e)
+        aidx1 = aidx1_init
+        eidx1 = eidx1_init
+      aidx0 = aidx0_init
+      eidx0 = eidx0_init
+    return cost
+    
+  def ssd(actual: int, estimate: int) -> int:
+    return (actual-estimate) ** 2
+
+  def ssd_opt(actual, estimate) -> int:
+    cost = 0
+    if actual.dims() != estimate.dims():
+      for r,p in zip(actual,estimate):
+        cost += abs(r()-p())
+    else:
+      actual_start = actual.base.origin_relative_to(actual.base._buffer_owner)
+      actual_start_lidx = actual_start[0] * actual.base._buffer_owner.dims()[1] + \
+                          actual_start[1]
+      estimate_start = estimate.base.origin_relative_to(estimate.base._buffer_owner)
+      estimate_start_lidx = estimate_start[0] * estimate.base._buffer_owner.dims()[1] + \
+                            estimate_start[1]
+      astride0 = actual.cgrid_mapping()[0][2]
+      astride1 = actual.cgrid_mapping()[1][2]
+      estride0 = estimate.cgrid_mapping()[0][2]
+      estride1 = estimate.cgrid_mapping()[1][2]
+
+      aidx0_incr = actual.base._buffer_owner.dims()[1] * astride0
+      aidx1_incr = astride1
+      aidx0_init = -aidx0_incr
+      aidx1_init = -aidx1_incr
+      aidx0 = aidx0_init
+      aidx1 = aidx1_init
+
+      eidx0_incr = estimate.base._buffer_owner.dims()[1] * estride0
+      eidx1_incr = estride1
+      eidx0_init = -eidx0_incr
+      eidx1_init = -eidx1_incr
+      eidx0 = eidx0_init
+      eidx1 = eidx1_init
+
+      for i in range(actual.dims()[0]):
+        aidx0 += aidx0_incr
+        eidx0 += eidx0_incr
+        for j in range(actual.dims()[1]):
+          aidx1 += aidx1_incr
+          eidx1 += eidx1_incr
+          alidx = aidx0 + aidx1 + actual_start_lidx
+          elidx = eidx0 + eidx1 + estimate_start_lidx
+          a = actual.base._buffer[alidx]
+          e = estimate.base._buffer[elidx]
+          cost += (a-e) ** 2
+        aidx1 = aidx1_init
+        eidx1 = eidx1_init
+      aidx0 = aidx0_init
+      eidx0 = eidx0_init
+    return cost
+
+  def ssd(actual, estimate) -> int:
+    cost = 0
+    for r,p in zip(actual, estimate):
+      cost += (r() - p()) ** 2
+    return cost
+
+  def satd_4x4(actual, estimate) -> int:
+    cost = 0
+    diff = actual - estimate
+    output = Block(diff)
+    Hadamard.hadamard4x4(diff, output)
+    for h in output:
+      cost += abs(h())
+    return cost   
+
+  def PSNR(orig, recons, bit_depth) -> float:
+    assert orig.nunits() == recons.nunits()
+    mse = float(Cost.ssd_opt(orig, recons)) /  orig.nunits()
+    psnr = 10 * math.log10(((2**bit_depth - 1) ** 2) / mse)
+    return psnr

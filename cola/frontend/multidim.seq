@@ -349,8 +349,9 @@ class Multidim[E,T,C]:
     if B == 1:
       # 6. linearize coord wrt buffer
       mapped_lidx = self._buffer_owner._linearize(coord)
-      if mapped_lidx >= self._buffer_owner.nunits():
-        raise ColaError('mapped_lidx ' + str(mapped_lidx) + ', nunits ' + str(self._buffer_owner.nunits()))
+# this gets checked already when a buffer gets accessed
+ #     if mapped_lidx >= self._buffer_owner.nunits():
+ #       raise ColaError('mapped_lidx ' + str(mapped_lidx) + ', nunits ' + str(self._buffer_owner.nunits()))
       return mapped_lidx
     else:
       return coord
@@ -377,22 +378,16 @@ class Multidim[E,T,C]:
     total_idxs = 1 + staticlen(idxs)
     if total_idxs != 1 and total_idxs != staticlen(self._dims):
       raise ColaError()
-    for idx in idxs:
-      # TODO does this statically assert ?
-      Multidim.check_int(idx)
+#    for idx in idxs:
+#      # TODO does this statically assert ?
+#      Multidim.check_int(idx)
     if staticlen(idxs) == 0:
       lidx = self.remap_local_lidx_to_buffer_lidx[1](idx)
       return self._buffer[lidx]
-#      x = self[(idx,)]
-#      return x()
     else:
       all_idxs = (idx,) + tuple(i for i in idxs)
       lidx = self.remap_local_coord_to_buffer_lidx[1](all_idxs)
       return self._buffer[lidx]
-#      x = self[(idx,) + tuple(i for i in idxs)]
-#      if not x.fully_contained(self._buffer_owner): # check in-bounds
-#        raise ColaError(str(idx) + ',' + str(idxs))
-#      return x()
 
   def clamp(self) -> E:
     """
@@ -479,6 +474,17 @@ class Multidim[E,T,C]:
                         stop//self_cgrid_mapping[0][2]+1, \
                         other_cgrid_mapping[0][2]),) + \
                         Multidim._get_mapping(self_cgrid_mapping[1:], other_cgrid_mapping[1:], other_origin[1:], relative_origin[1:])       
+
+  def _get_mapping_no_checks(self_cgrid_mapping, other_cgrid_mapping, other_origin, relative_origin):
+    if staticlen(other_origin) == 0:
+      return ()
+    else:
+      stop = other_cgrid_mapping[0][1] - self_cgrid_mapping[0][0] - 1
+      # creating the mapping RELATIVE to self
+      return (ColaSlice(relative_origin[0]//self_cgrid_mapping[0][2], \
+                        stop//self_cgrid_mapping[0][2]+1, \
+                        other_cgrid_mapping[0][2]),) + \
+                        Multidim._get_mapping(self_cgrid_mapping[1:], other_cgrid_mapping[1:], other_origin[1:], relative_origin[1:])    
 
   def __getitem__[E2](self, other: Multidim[E2,T,C]) -> Multidim[E,T,C]:    
     """
@@ -578,6 +584,7 @@ class Multidim[E,T,C]:
       canon = Multidim._do_canonicalize(idxs, self._dims)
       return Multidim(self, Multidim._do_combined(self._cgrid_mapping, canon))  
 
+  # TODO optimize
   def __setitem__[E2](self, idx: Multidim[E2,T,C], item: E):
     """
     Broadcast item to the region in self covered by idx.

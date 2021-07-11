@@ -1,0 +1,22 @@
+from ..cola.frontend.block import Block
+from ..cola.frontend.error import *
+from constants import *
+
+class IOYUV:
+
+  def read_frame_planar(Y_frame, U_frame, V_frame, fd, bit_depth):
+    yh,yw = Y_frame.dims()
+    ch,cw = U_frame.dims()
+    assert yh % 16 == 0
+    assert yw % 16 == 0
+    total_elems = yh * yw
+    Y_frame.read(fd, bit_depth//8, total_elems)
+    total_elems = ch * cw
+    U_frame.read(fd, bit_depth//8, total_elems)
+    V_frame.read(fd, bit_depth//8, total_elems)
+
+def read_frame(Y_frame, Cb_frame, Cr_frame, fd, cfg):
+  if cfg.color_space == YUV:
+    IOYUV.read_frame_planar(Y_frame, Cb_frame, Cr_frame, fd, cfg.bit_depth)
+  else:
+    raise ColaError()

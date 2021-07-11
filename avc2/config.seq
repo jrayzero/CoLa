@@ -1,0 +1,196 @@
+from ..cola.frontend.error import *
+from ..cola.frontend.block import *
+from constants import *
+
+# TODO allow turning off individual 4x4 modes
+
+@dataclass(init=False)
+class Config:
+
+  input_file: str
+  nframes: int
+  lframe_width_in_pixels: int
+  lframe_height_in_pixels: int
+  cframe_width_in_pixels: int
+  cframe_height_in_pixels: int
+  input_sample: int
+  color_space: int
+  macroblocks_per_slice: int
+  bit_depth: int
+  qp: int
+  skip_4x4_intra: bool
+  skip_4x4_vert: bool
+  skip_4x4_horiz: bool
+  skip_4x4_ddl: bool
+  skip_4x4_ddr: bool
+  skip_4x4_vert_right: bool
+  skip_4x4_horiz_down: bool
+  skip_4x4_vert_left: bool
+  skip_4x4_horiz_up: bool
+  skip_16x16_intra: bool
+  skip_16x16_horiz: bool
+  skip_16x16_vert: bool
+  skip_16x16_planar: bool
+  trace: bool
+  # mimicking JM and it's quantization that I don't totally understand...but I can match it!
+  scale_quant_matrix: Block[int, Tuple[int, int, int], Tuple[ColaSlice, ColaSlice, ColaSlice]]
+  inv_scale_quant_matrix: Block[int, Tuple[int, int, int], Tuple[ColaSlice, ColaSlice, ColaSlice]]
+  offset_comp: list[int]
+  qp_per_matrix: list[int]
+
+  def __init__(self, cfg_file):
+    self.nframes = -1
+    self.lframe_width_in_pixels = -2
+    self.lframe_width_in_pixels = -2
+    self.cframe_height_in_pixels = -2
+    self.cframe_height_in_pixels = -2
+    self.input_sample = SAMPLE_420
+    self.macroblocks_per_slice = 10
+    self.bit_depth = 8
+    self.qp = 10
+    self.skip_4x4_intra = False
+    self.skip_4x4_intra = False
+    self.skip_4x4_vert = False
+    self.skip_4x4_horiz = False
+    self.skip_4x4_ddl = False
+    self.skip_4x4_ddr = False
+    self.skip_4x4_vert_right = False
+    self.skip_4x4_horiz_down = False
+    self.skip_4x4_vert_left = False
+    self.skip_4x4_horiz_up = False
+    self.skip_16x16_intra = False
+    self.skip_16x16_horiz = False
+    self.skip_16x16_vert = False
+    self.skip_16x16_planar = False
+    self.trace = False
+    self.scale_quant_matrix = Block.make((6,4,4), [13107,8066,13107,8066,8066,5243,8066,5243,13107,8066,13107,8066,8066,5243,8066,5243,
+                                                   11916,7490,11916,7490,7490,4660,7490,4660,11916,7490,11916,7490,7490,4660,7490,4660,
+                                                   10082,6554,10082,6554,6554,4194,6554,4194,10082,6554,10082,6554,6554,4194,6554,4194,
+                                                   9362,5825,9362,5825,5825,3647,5825,3647,9362,5825,9362,5825,5825,3647,5825,3647,
+                                                   8192,5243,8192,5243,5243,3355,5243,3355,8192,5243,8192,5243,5243,3355,5243,3355,
+                                                   7282,4559,7282,4559,4559,2893,4559,2893,7282,4559,7282,4559,4559,2893,4559,2893])
+    self.inv_scale_quant_matrix = Block.make((6,4,4), [160,208,160,208,208,256,208,256,160,208,160,208,208,256,208,256,
+                                                       176,224,176,224,224,288,224,288,176,224,176,224,224,288,224,288,
+                                                       208,256,208,256,256,320,256,320,208,256,208,256,256,320,256,320,
+                                                       224,288,224,288,288,368,288,368,224,288,224,288,288,368,288,368,
+                                                       256,320,256,320,320,400,320,400,256,320,256,320,320,400,320,400,
+                                                       288,368,288,368,368,464,368,464,288,368,288,368,368,464,368,464])
+
+    self.offset_comp = [10912, 21824, 43648, 87296, 174592, 349184, 698368, 1396736, 2793472]
+    self.qp_per_matrix = [0] * 51
+    for i in range(51):
+      self.qp_per_matrix[i] = (i//6)
+
+    fd = open(cfg_file, 'r')
+    params = {}
+    for line in fd:
+      line = line.strip()
+      if len(line) == 0:
+        continue
+      if line[0] == '#':
+        continue
+      sline = line.split('=')
+      if len(sline) == 2:
+        params[sline[0].lower().strip()] = sline[1].strip()
+    fd.close()
+
+    if 'input_file' in params:
+      self.input_file = params['input_file']
+      if self.input_file[0] == '\'' and self.input_file[-1] == '\'':
+        self.input_file = self.input_file[1:-1]
+    else:
+      raise ConfigError()
+    if 'nframes' in params:
+      self.nframes = int(params['nframes'])
+      if self.nframes < 0:
+        raise ConfigError()
+    else:
+      raise ConfigError()
+    if 'input_sample' in params:
+      val = params['input_sample'].lower()
+      if val == 'sample_420':
+        self.input_sample = SAMPLE_420
+      else:
+        raise ConfigError()
+    if 'frame_width_in_pixels' in params:
+      val = params['frame_width_in_pixels'].lower()
+      if val == 'qcif':
+        self.lframe_width_in_pixels = 176
+        if self.input_sample == SAMPLE_420:
+          self.cframe_width_in_pixels = 88
+      else:
+        raise ConfigError()
+    else:
+      raise ConfigError()
+    if 'frame_height_in_pixels' in params:
+      val = params['frame_height_in_pixels'].lower()
+      if val == 'qcif':
+        self.lframe_height_in_pixels = 144
+        if self.input_sample == SAMPLE_420:
+          self.cframe_height_in_pixels = 72
+      else:
+        raise ConfigError()
+    else:
+      raise ConfigError()
+    if 'macroblocks_per_slice' in params:
+      self.macroblocks_per_slice = int(params['macroblocks_per_slice'])
+    if 'qp' in params:
+      self.qp = int(params['qp'])
+    if 'skip_4x4_intra' in params:
+      self.skip_4x4_intra = params['skip_4x4_intra'].lower() == 'true'
+    if 'skip_4x4_vert' in params:
+      self.skip_4x4_vert = params['skip_4x4_vert'].lower() == 'true'
+    if 'skip_4x4_horiz' in params:
+      self.skip_4x4_horiz = params['skip_4x4_horiz'].lower() == 'true'
+    if 'skip_4x4_ddl' in params:
+      self.skip_4x4_ddl = params['skip_4x4_ddl'].lower() == 'true'
+    if 'skip_4x4_ddr' in params:
+      self.skip_4x4_ddr = params['skip_4x4_ddr'].lower() == 'true'
+    if 'skip_4x4_vert_right' in params:
+      self.skip_4x4_vert_right = params['skip_4x4_vert_right'].lower() == 'true'
+    if 'skip_4x4_horiz_down' in params:
+      self.skip_4x4_horiz_down = params['skip_4x4_horiz_down'].lower() == 'true'
+    if 'skip_4x4_vert_left' in params:
+      self.skip_4x4_vert_left = params['skip_4x4_vert_left'].lower() == 'true'
+    if 'skip_4x4_horiz_up' in params:
+      self.skip_4x4_horiz_up = params['skip_4x4_horiz_up'].lower() == 'true'
+    if 'skip_16x16_intra' in params:
+      self.skip_16x16_intra = params['skip_16x16_intra'].lower() == 'true'
+    if 'skip_16x16_horiz' in params:
+      self.skip_16x16_horiz = params['skip_16x16_horiz'].lower() == 'true'
+    if 'skip_16x16_vert' in params:
+      self.skip_16x16_vert = params['skip_16x16_vert'].lower() == 'true'
+      if 'skip_16x16_planar' in params:
+        self.skip_16x16_planar = params['skip_16x16_planar'].lower() == 'true'
+    if 'trace' in params:
+      self.trace = params['trace'].lower() == 'true'
+
+  def __str__(self):
+    s = ''
+    s += 'input_file: ' + str(self.input_file) + '\n'
+    s += 'output_file: ' + str(self.output_file) + '\n'
+    s += 'nframes: ' + str(self.nframes) + '\n'
+    s += 'lframe_width_in_pixels: ' + str(self.lframe_width_in_pixels) + '\n'
+    s += 'lframe_height_in_pixels: ' + str(self.lframe_height_in_pixels) + '\n'
+    s += 'cframe_width_in_pixels: ' + str(self.cframe_width_in_pixels) + '\n'
+    s += 'cframe_height_in_pixels: ' + str(self.cframe_height_in_pixels) + '\n'
+    s += 'input_sample: ' + str(self.input_sample) + '\n'
+    s += 'color_space: ' + str(self.color_space) + '\n'
+    s += 'macroblocks_per_slice: ' + str(self.macroblocks_per_slice) + '\n'
+    s += 'bit_depth: ' + str(self.bit_depth) + '\n'
+    s += 'qp: ' + str(self.qp) + '\n'
+    s += 'trace: ' + str(self.trace) + '\n'
+    s += 'skip_4x4_intra: ' + str(self.skip_4x4_intra) + '\n'
+    s += 'skip_4x4_vert: ' + str(self.skip_4x4_vert) + '\n'
+    s += 'skip_4x4_horiz: ' + str(self.skip_4x4_horiz) + '\n'
+    s += 'skip_4x4_ddl: ' + str(self.skip_4x4_ddl) + '\n'
+    s += 'skip_4x4_ddr: ' + str(self.skip_4x4_ddr) + '\n'
+    s += 'skip_4x4_vert_right: ' + str(self.skip_4x4_vert_right) + '\n'
+    s += 'skip_4x4_horiz_down: ' + str(self.skip_4x4_horiz_down) + '\n'
+    s += 'skip_4x4_vert_left: ' + str(self.skip_4x4_vert_left) + '\n'
+    s += 'skip_4x4_horiz_up: ' + str(self.skip_4x4_horiz_up) + '\n'
+    s += 'skip_16x16_intra: ' + str(self.skip_16x16_intra) + '\n'
+    s += 'skip_16x16_horiz: ' + str(self.skip_16x16_horiz) + '\n'
+    s += 'skip_16x16_vert: ' + str(self.skip_16x16_vert) + '\n'
+    s += 'skip_16x16_planar: ' + str(self.skip_16x16_planar)
+    return s

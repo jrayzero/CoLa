@@ -100,7 +100,7 @@ class Quantize:
     QP = cfg.qp
     qp_per = cfg.qp_per_matrix[QP]
     q_bits = 15 + qp_per
-    for _coeff,_q,_scale,_iscale in zip(coeffs, quant, cfg.scale_quant_matrix[QP%6,:,:], cfg.inv_scale_quant_matrix[QP%6,:,:]):
+    for _coeff,_q,_scale, in zip(coeffs, quant, cfg.scale_quant_matrix[QP%6,:,:]):
       coeff = _coeff()
       scaled_coeff = abs(coeff) * _scale()
       level = scaled_coeff + cfg.offset_comp[QP//6]

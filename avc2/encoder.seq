@@ -1,0 +1,137 @@
+from ..cola.frontend.block import *
+from ..cola.frontend.error import *
+from ..cola.frontend.flagtree import *
+
+from basic_io import *
+from constants import *
+from partition import *
+from intra4x4 import *
+from intra16x16 import *
+from config import *
+from structures import *
+from trav import *
+from transforms import *
+from quantize import *
+from cost import *
+from cavlc import *
+
+# TODO NOTE: deblocking used only for inter-prediction (but you would still filter the intra-predicted mbs).
+#  This means we need to store both filtered and unfiltered references
+
+import sys
+
+if len(sys.argv) < 2:
+  raise ColaError()
+
+config_file = sys.argv[1]
+cfg = Config(config_file)
+
+ifd = open(cfg.input_file, 'rb')
+
+lframe_w,lframe_h = cfg.lframe_width_in_pixels, cfg.lframe_height_in_pixels
+cframe_w,cframe_h = cfg.cframe_width_in_pixels, cfg.cframe_height_in_pixels
+
+# holds the raw pixels for a single frame
+Y_frame = Block.make[byte](lframe_h, lframe_w)
+Cb_frame = Block.make[byte](cframe_h, cframe_w)
+Cr_frame = Block.make[byte](cframe_h, cframe_w)
+
+# These hold the (unfiltered) reconstructed values
+Y_recons = Y_frame.shallow_cast[int]()
+Cb_recons = Cb_frame.shallow_cast[int]()
+Cr_recons = Cr_frame.shallow_cast[int]()
+
+# have deblocking filtered applied before reconstruction (for inter)
+Y_recons_filt = Y_frame.shallow_cast[int]()
+Cb_recons_filt = Cb_frame.shallow_cast[int]()
+Cr_recons_filt = Cr_frame.shallow_cast[int]()
+
+# for inter-prediction, we need our reference pixels with the loop filter applied
+
+assert not cfg.skip_16x16_intra or not cfg.skip_4x4_intra
+
+# some stats
+total_psnr = 0.0
+all_bits = Bits[64]()
+start = _C.seq_time_monotonic()
+# main loop
+for f in range(cfg.nframes):
+  if cfg.color_space == YUV:
+    read_frame(Y_frame, Cb_frame, Cr_frame, ifd, cfg)
+  # Initial partition of the frames into macroblocks
+  Y_mbs = Partition.grid(Y_frame, 16)
+  Cb_mbs = Partition.grid(Cb_frame, 8)
+  Cr_mbs = Partition.grid(Cr_frame, 8)
+  Y_rmbs = Partition.grid(Y_recons, 16)
+  Cb_rmbs = Partition.grid(Cb_recons, 8)
+  Cr_rmbs = Partition.grid(Cr_recons, 8)
+  # don't pass in BlkInfo() because it will set all of the nodes to the same Blk, so then they are all just pointers to one another.
+  # just keep it as a generic type instead so it gets created for all of the nodes
+  blk_info = Y_mbs.to_flagtree[BlkInfo]()
+  cur_slice_id = 0
+  mbs_in_slice = 0
+  mb_idx = 0
+  for Y_mb,Y_rmb in zip(Y_mbs, Y_rmbs):
+    blk_info[Y_mb].slice_id = cur_slice_id
+    # Intra prediction
+    blk_info[Y_mb].is_intra_pred = True
+    if not cfg.skip_16x16_intra and not cfg.skip_4x4_intra:
+      raise NotImplementedError('Not supported currently')
+      # do both
+      cost_16x16,mode_16x16,DCs_16x16,quant_16x16,local_recons_16x16_unfilt = IntraPred16x16.try_low(Y_mb, Y_rmb, blk_info, cfg)
+      # returns the full cost + full 16x16 pred (made of 4x4 blocks)
+      cost_4x4,mode_tree_4x4,quant_4x4,local_recons_4x4_unfilt = IntraPred4x4.try_low(Y_mb, Y_rmb, blk_info, cfg)
+      if cost_16x16 <= cost_4x4:
+        blk_info[Y_mb].mode = mode_16x16
+        blk_info[Y_mb].intra_pred_type = INTRA_16x16
+        Y_recons[local_recons_16x16_unfilt] = local_recons_16x16_unfilt
+        # TODO ENCODE QUANT
+      else:
+        # returns the full cost + full 16x16 pred (made of 4x4 blocks)
+        blk_info[Y_mb] = mode_tree_4x4
+        Y_recons[local_recons_4x4_unfilt] = local_recons_4x4_unfilt
+        # encode the quantized result so we can get a bit count. Doesn't do any syntax stuff, just pure cavlc
+        for q_4x4 in Partition.grid_quadtree(quant_4x4, 2)[0]:
+          _, total_coeffs = CAVLC.encode(q_4x4, blk_info, all_bits)
+          blk_info[q_4x4].total_coeffs = total_coeffs
+    elif not cfg.skip_16x16_intra:
+      raise NotImplementedError('Not supported currently')
+      cost_16x16, mode_16x16, DCs_16x16, quant_16x16, local_recons_16x16_unfilt = IntraPred16x16.try_low(Y_mb, Y_rmb,
+                                                                                                         blk_info, cfg)
+      blk_info[Y_mb].mode = mode_16x16
+      blk_info[Y_mb].intra_pred_type = INTRA_16x16
+      Y_recons[local_recons_16x16_unfilt] = local_recons_16x16_unfilt
+      # TODO need DC also
+      Q_16x16 = Partition.grid_quadtree(quant_16x16, 2)[0]
+      for q_16x16 in Q_16x16:
+        _, total_coeffs = CAVLC.encode(q_16x16, blk_info, all_bits)
+        blk_info[q_16x16].total_coeffs = total_coeffs
+    elif not cfg.skip_4x4_intra:
+      # returns the full cost + full 16x16 pred (made of 4x4 blocks)
+      cost_4x4, mode_tree_4x4, quant_4x4, local_recons_4x4_unfilt = IntraPred4x4.try_low(Y_mb, Y_rmb, blk_info, cfg)
+      blk_info[Y_mb] = mode_tree_4x4
+      Y_recons[local_recons_4x4_unfilt] = local_recons_4x4_unfilt
+      # encode the quantized result so we can get a bit count. Doesn't do any syntax stuff, just pure cavlc
+      for q_4x4 in Partition.grid_quadtree(quant_4x4, 2)[0]:
+        _, total_coeffs = CAVLC.encode(q_4x4, blk_info, all_bits)
+        blk_info[q_4x4].total_coeffs = total_coeffs
+    # update slice status
+    mbs_in_slice += 1
+    if cfg.macroblocks_per_slice != -1 and cfg.macroblocks_per_slice == mbs_in_slice:
+      mbs_in_slice = 0
+      cur_slice_id += 1
+    mb_idx += 1
+  # compute some stats on this frame
+  # TODO use filtered reconstruction?
+  psnr = Cost.PSNR(int(Y_frame), Y_recons, cfg.bit_depth)
+  #note('frame ' + str(f) + ' has psnr ' + str(psnr))
+  total_psnr += psnr
+stop = _C.seq_time_monotonic()
+print 'Time ' + str((stop-start)/1e9)
+note('Avg nbits/frame ' + str(len(all_bits)//cfg.nframes))
+avg_psnr = total_psnr / float(cfg.nframes)
+note('Y_psnr/frame ' + str(avg_psnr))
+
+ifd.close()
+
+#print 'cost time ' + str(cost_time/1e9)
